@@ -92,7 +92,7 @@ function NavigationItems({ page, navigate }: { page: string; navigate: (page: st
     className={`relative flex h-[70px] w-[60px] shrink-0 flex-col items-center justify-center gap-[10px] bg-transparent p-0 text-[12px] leading-[14px] font-medium tracking-[-.04em] lg:h-[45px] lg:w-auto lg:flex-row lg:justify-start lg:gap-[13px] lg:rounded-[7px] lg:px-[13px] lg:hover:bg-[#ffffff05] lg:hover:text-white ${page === name ? "text-white lg:bg-[#ffffff07] lg:before:absolute lg:before:left-[-24px] lg:before:h-5 lg:before:w-[2px] lg:before:rounded-[2px] lg:before:bg-[#c0d8cc] lg:before:content-['']" : "text-[#7d7d7d]"} ${name === "Profile" ? "lg:mt-[14px] lg:h-[60px] lg:rounded-none lg:border-t lg:border-white/4 lg:pt-[15px]" : ""}`}
     onClick={() => navigate(name)} aria-current={page === name ? "page" : undefined}
   >
-    {Icon ? <Icon className="size-8 shrink-0 stroke-[1.5] lg:size-[21px]" /> : <span className="grid size-[38px] place-items-center rounded-full bg-[#430d36] text-[20px] leading-[23px] font-medium text-[#7d7d7d]">H</span>}
+    {Icon ? <Icon className="size-8 shrink-0 stroke-[1.5] lg:size-[21px]" /> : <span className="grid size-[38px] place-items-center rounded-full bg-[#430d36] text-[20px] leading-[23px] font-medium text-[#7d7d7d]">S</span>}
     <span>{name}</span>
   </button>)}</>;
 }
@@ -160,7 +160,7 @@ export default function StreamingApp() {
     <main className="overflow-hidden pt-[19px] pb-40 lg:ml-[200px] lg:max-w-[1900px] lg:px-[42px] lg:pt-0 lg:pb-[30px] min-[1450px]:ml-[220px] min-[1450px]:px-[60px]">
       <header className="hidden h-[101px] items-center justify-between text-[13px] text-[#778b81] lg:flex">
         <div>Discover your next <span className="text-[#c4cec8]">great watch.</span></div>
-        <div className="flex items-center gap-[23px]"><button className="bg-transparent text-[#c3cbc7]" aria-label="Search movies and shows" onClick={() => navigate("Search")}><SearchIcon className="size-5" /></button><span className="h-[19px] w-px bg-[#ffffff14]" /><button className="grid size-8 place-items-center rounded-full bg-[#4f173d] text-[14px] font-semibold text-[#b7669b]" aria-label="Open profile" onClick={() => navigate("Profile")}>H</button></div>
+        <div className="flex items-center gap-[23px]"><button className="bg-transparent text-[#c3cbc7]" aria-label="Search movies and shows" onClick={() => navigate("Search")}><SearchIcon className="size-5" /></button><span className="h-[19px] w-px bg-[#ffffff14]" /><button className="grid size-8 place-items-center rounded-full bg-[#4f173d] text-[14px] font-semibold text-[#b7669b]" aria-label="Open profile" onClick={() => navigate("Profile")}>S</button></div>
       </header>
       {page === "Home" ? <>
         <div className="flex items-center gap-2 overflow-x-auto px-[23px] [scrollbar-width:none] lg:mb-[25px] lg:px-0 [&::-webkit-scrollbar]:hidden" aria-label="Browse genres">
@@ -218,7 +218,7 @@ export default function StreamingApp() {
         </section>
         <footer className="mt-[45px] hidden items-center justify-between border-t border-[#ffffff08] pt-[25px] text-[10px] text-[#48544d] lg:flex"><span className="text-[15px] font-bold tracking-[-1px] text-[#74847a]">streamline.</span><span>Your next story starts here.</span><span>Made for movie nights.</span></footer>
       </> : page === "Profile" ? <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
-        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]">H</span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton></div>
+        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]">S</span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton></div>
       </section> : <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
         <FeatureLabel>{page === "Search" ? "FIND YOUR NEXT FAVORITE" : "SAVED FOR A GOOD NIGHT"}</FeatureLabel>
         <h1 className="mt-5 mb-7 text-[28px] tracking-[-1px] lg:text-[38px]">{page === "Search" ? "What are you looking for?" : "Your library"}</h1>
