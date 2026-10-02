@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -12,6 +12,11 @@ const karla = localFont({
 export const metadata: Metadata = {
   title: "Streamline",
   description: "A streaming platform for movies and shows.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0e0d0f",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

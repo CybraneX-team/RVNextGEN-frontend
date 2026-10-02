@@ -256,7 +256,7 @@ function MovieDetail({ film, saved, onSave, onSelect, onNavigate }: {
         <FilmRow title="Explore Other Films" items={explore} onSelect={onSelect} />
       </>}
     </div>
-    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] lg:hidden" aria-label="Main navigation">
+    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation">
       <NavigationItems page="" navigate={onNavigate} />
     </nav>
   </main>;
@@ -322,7 +322,7 @@ export default function StreamingApp() {
   if (selected) return <MovieDetail key={selected.id} film={selected} saved={saved.includes(selected.id)} onSave={() => toggleSave(selected)} onSelect={open} onNavigate={(destination) => { closeMovie(); navigate(destination); }} />;
 
   return <div className="min-h-screen bg-[radial-gradient(ellipse_at_35%_0%,#09231f_0%,#0b1715_22%,#0c0c0d_52%)] lg:bg-[radial-gradient(ellipse_at_65%_0%,#122823_0,#101917_25%,#0c0d0e_65%)]">
-    <aside className="fixed inset-y-0 left-0 z-[25] hidden w-[200px] flex-col border-r border-[#ffffff07] bg-[#0c100fee] px-6 py-[37px] lg:flex min-[1450px]:w-[220px] min-[1450px]:px-7">
+    <aside className="fixed inset-y-0 left-0 z-[25] hidden w-[200px] flex-col border-r border-[#ffffff07] bg-[#0c100fee] px-6 py-[37px] shadow-[inset_-1px_0_0_#ffffff06,8px_0_40px_#09231f12] backdrop-blur-xl lg:flex min-[1450px]:w-[220px] min-[1450px]:px-7">
       <button className="flex items-center bg-transparent p-0 text-left text-[22px] font-bold tracking-[-1px]" onClick={() => navigate("Home")} aria-label="Streamline home"><span className="mr-2 text-[33px] leading-none text-[#c8e0d5] italic">s</span>streamline<span className="text-[#a3cdb9]">.</span></button>
       <span className="mt-[62px] mb-[22px] ml-3 text-[8px] tracking-[2px] text-[#56615b]">YOUR SPACE</span>
       <nav className="flex flex-col gap-[10px]"><NavigationItems page={page} navigate={navigate} /></nav>
@@ -401,7 +401,7 @@ export default function StreamingApp() {
         {page === "Search" && !films.some(f => `${f.title} ${f.genre}`.toLowerCase().includes(query.toLowerCase())) && <p className="py-[55px] text-center text-[#a1aba6]">No titles found. Try another title or genre.</p>}
       </section>}
     </main>
-    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>
+    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>
 
   </div>;
 }
