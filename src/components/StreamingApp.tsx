@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useAuth } from "./AuthProvider";
 import { ChevronRightIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
 
 function subscribeLibrary(callback: () => void) {
@@ -263,10 +264,12 @@ function MovieDetail({ film, saved, onSave, onSelect, onNavigate }: {
 }
 
 export default function StreamingApp() {
+  const { signOut, user } = useAuth();
   const [page, setPage] = useState("Home");
   const [genre, setGenre] = useState("Thrill");
   const [hero, setHero] = useState(0);
   const [query, setQuery] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
   const selectedId = useSyncExternalStore(subscribeMovie, movieSnapshot, () => "");
   const selected = films.find(film => film.id === selectedId) || null;
   const browseScroll = useRef(0);
@@ -318,6 +321,11 @@ export default function StreamingApp() {
     window.dispatchEvent(new Event("movie-change"));
   }
   function navigate(name: string) { setPage(name); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  async function logout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    await signOut();
+  }
 
   if (selected) return <MovieDetail key={selected.id} film={selected} saved={saved.includes(selected.id)} onSave={() => toggleSave(selected)} onSelect={open} onNavigate={(destination) => { closeMovie(); navigate(destination); }} />;
 
@@ -389,7 +397,7 @@ export default function StreamingApp() {
         </section>
         <footer className="mt-[45px] hidden items-center justify-between border-t border-[#ffffff08] pt-[25px] text-[10px] text-[#48544d] lg:flex"><span className="text-[15px] font-bold tracking-[-1px] text-[#74847a]">streamline.</span><span>Your next story starts here.</span><span>Made for movie nights.</span></footer>
       </> : page === "Profile" ? <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
-        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]">S</span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton></div>
+        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]">S</span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="text-[#9caaa3]">{user?.email}</p><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><div className="flex flex-wrap items-center justify-center gap-3"><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton><button type="button" disabled={signingOut} onClick={() => void logout()} className="inline-flex min-h-[43px] items-center justify-center rounded-[7px] border border-white/15 bg-white/5 px-[21px] text-[13px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50">{signingOut ? "Logging out…" : "Log out"}</button></div></div>
       </section> : <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
         {/* <FeatureLabel>{page === "Search" ? "FIND YOUR NEXT FAVORITE" : "SAVED FOR A GOOD NIGHT"}</FeatureLabel> */}
         <h1 className="mt-5 mb-7 text-[28px] tracking-[-1px] lg:text-[38px]">{page === "Search" ? "What are you looking for?" : "Your library"}</h1>

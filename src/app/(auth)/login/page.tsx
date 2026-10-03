@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useRedirectIfSignedIn } from "@/components/AuthProvider";
 
 export default function LoginPage() {
   const router = useRouter();
+  useRedirectIfSignedIn();
   const [leaving, setLeaving] = useState(false);
 
   function continueWith(mode: "signup" | "signin") {
