@@ -1,4 +1,4 @@
-export type AuthUser = { id: string; email: string; role: "USER" | "CREATOR" | "ADMIN"; emailVerified: boolean };
+export type AuthUser = { id: string; email: string; role: "USER" | "CREATOR" | "ADMIN"; emailVerified: boolean; displayName: string | null; avatarUrl: string | null };
 export type Session = { user: AuthUser; accessToken: string; expiresIn: number };
 
 export class ApiError extends Error {
