@@ -119,9 +119,7 @@ function FilmRow({ title, items, onSelect, first = false }: { title: string; ite
 const navItemBase = "relative flex h-[70px] w-[60px] shrink-0 flex-col items-center justify-center gap-[10px] bg-transparent p-0 text-[12px] leading-[14px] font-medium tracking-[-.04em] lg:h-[45px] lg:w-auto lg:flex-row lg:justify-start lg:gap-[13px] lg:rounded-[7px] lg:px-[13px] lg:hover:bg-[#ffffff05] lg:hover:text-white";
 
 function NavigationItems({ page, navigate }: { page: string; navigate: (page: string) => void }) {
-  const { user, signOut } = useAuth();
-  const [signingOut, setSigningOut] = useState(false);
-  async function handleLogout() { if (signingOut) return; setSigningOut(true); await signOut(); }
+  const { user } = useAuth();
   return <>
     {navigation.map(({ name, icon: Icon }) => <button
       key={name}
@@ -132,14 +130,13 @@ function NavigationItems({ page, navigate }: { page: string; navigate: (page: st
       <span>{name}</span>
     </button>)}
     <button
-      key="logout"
+      key="profile"
       type="button"
-      disabled={signingOut}
-      className={`${navItemBase} text-[#7d7d7d] lg:mt-[14px] lg:h-[60px] lg:rounded-none lg:border-t lg:border-white/4 lg:pt-[15px] disabled:cursor-wait disabled:opacity-60`}
-      onClick={() => void handleLogout()} aria-label="Log out"
+      className={`${navItemBase} ${page === "Profile" ? "text-white lg:bg-[#ffffff07]" : "text-[#7d7d7d]"} lg:mt-[14px] lg:h-[60px] lg:rounded-none lg:border-t lg:border-white/4 lg:pt-[15px]`}
+      onClick={() => navigate("Profile")} aria-current={page === "Profile" ? "page" : undefined} aria-label="Open profile"
     >
       <span className="grid size-[38px] place-items-center overflow-hidden rounded-full bg-[#430d36] text-[20px] leading-[23px] font-medium text-[#7d7d7d]"><Avatar user={user} /></span>
-      <span>{signingOut ? "Logging out…" : "Log out"}</span>
+      <span>Profile</span>
     </button>
   </>;
 }
