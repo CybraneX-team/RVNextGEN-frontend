@@ -8,7 +8,7 @@ export class ApiError extends Error {
 }
 
 /** The backend answers with a string, or (for validation errors) a list of { path, message }. */
-function messageFrom(body: unknown, fallback: string): string {
+export function messageFrom(body: unknown, fallback: string): string {
   const message = (body as { message?: unknown } | null)?.message;
   if (typeof message === "string") return message;
   if (Array.isArray(message)) {

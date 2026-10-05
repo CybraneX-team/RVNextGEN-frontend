@@ -1,15 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 import { ChevronRightIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
-
-function subscribeLibrary(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener("library-change", callback);
-  return () => { window.removeEventListener("storage", callback); window.removeEventListener("library-change", callback); };
-}
-function librarySnapshot() { try { return localStorage.getItem("streamline-library") || "[]"; } catch { return "[]"; } }
+import { getDeviceId } from "@/lib/device";
+import {
+  addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
+  getWatchlist, removeFromWatchlist, type ApiContent,
+} from "@/lib/content";
 
 function subscribeMovie(callback: () => void) {
   window.addEventListener("popstate", callback);
@@ -30,25 +29,36 @@ function closeMovie() {
   }
 }
 
-const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1000&q=85`;
-const films = [
-  { id: "furious", title: "The Furious", genre: "Action", year: "2026", rating: "4.5", image: photo("photo-1519608487953-e999c86e7455"), tagline: "No rules. No mercy. No way back.", description: "When everything is taken from him, one man enters a city's dangerous underworld. A relentless race for justice begins." },
-  { id: "disclosure", title: "Disclosure Day", genre: "Sci-Fi", year: "2026", rating: "4.7", image: photo("photo-1534447677768-be436bb09401"), tagline: "The truth belongs to everyone.", description: "A mysterious signal changes everything we thought we knew about our place in the universe." },
-  { id: "arctic", title: "Arctic to Antarctic", genre: "Documentary", year: "2026", rating: "4.8", image: photo("photo-1473448912268-2022ce9509d8"), tagline: "One planet. An extraordinary journey.", description: "Journey beyond the familiar into the wildest corners of our extraordinary planet." },
-  { id: "salt", title: "Salt Mines", genre: "Thrill", year: "2026", rating: "4.2", image: photo("photo-1518837695005-2083093ee35b"), tagline: "Some secrets never surface.", description: "An isolated coastal town is hiding a secret. One detective is determined to bring it to the surface." },
-  { id: "light", title: "The Last Light", genre: "Drama", year: "2026", rating: "4.6", image: photo("photo-1472214103451-9374bd1c798e"), tagline: "Every ending has a beginning.", description: "Returning to her childhood home, a photographer discovers the small moments that make a life." },
-  { id: "orbit", title: "Beyond Orbit", genre: "Sci-Fi", year: "2026", rating: "4.4", image: photo("photo-1446776811953-b23d57bd21aa"), tagline: "There is more out there.", description: "Far from Earth, a lone crew follows a signal that could change the future of humanity." },
-  { id: "dexter", title: "Dexter New Blood", genre: "Thrill", year: "2021", rating: "4.8", image: photo("photo-1472396961693-142e6e269027"), tagline: "Long time. No spree.", description: "Old instincts return in a quiet, snow-covered town. The past never stays buried for long." },
-  { id: "city", title: "City on a Hill", genre: "Drama", year: "2022", rating: "4.6", image: photo("photo-1519501025264-65ba15a82390"), tagline: "Every city has a dark side.", description: "An unlikely alliance challenges a system built on corruption in a city at a crossroads." },
-  { id: "midnight", title: "Midnight Static", genre: "Sci-Fi", year: "2025", rating: "4.7", image: photo("photo-1519608487953-e999c86e7455"), tagline: "Don't follow the signal.", description: "A late-night radio broadcast leads a group of strangers into an impossible mystery." },
-  { id: "heist", title: "The Quiet Heist", genre: "Action", year: "2025", rating: "4.5", image: photo("photo-1480714378408-67cf0d13bc1b"), tagline: "Silence is the perfect disguise.", description: "One last job. An impossible plan. A crew with everything to lose." },
-  { id: "yellowstone", title: "Yellowstone", genre: "Drama", year: "2024", rating: "4.9", image: photo("photo-1464822759023-fed622ff2c3b"), tagline: "This land is worth fighting for.", description: "Family, loyalty, and a legacy worth protecting, set against the breathtaking American West." },
-];
-type Film = typeof films[number];
-const genres = ["Thrill", "Action", "Drama", "Sci-Fi", "Documentary"];
+type Film = { id: string; title: string; genre: string; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean };
+const GENRE_BY_TYPE: Record<string, string> = { MOVIE: "Movie", SERIES: "Series", EPISODE: "Episode", SHORT: "Short" };
+/** Maps a backend content item into the shape the existing UI renders. */
+function toFilm(c: ApiContent): Film {
+  return {
+    id: c.id,
+    title: c.title,
+    genre: c.categories[0]?.name ?? GENRE_BY_TYPE[c.type] ?? "Movie",
+    year: (c.releaseDate ? new Date(c.releaseDate) : new Date(c.createdAt)).getFullYear().toString(),
+    rating: c.rating != null ? c.rating.toFixed(1) : "",
+    image: c.posterUrl ?? "",
+    tagline: c.tagline ?? "",
+    description: c.description ?? "",
+    real: true,
+  };
+}
 const navigation = [{ name: "Home", icon: HomeIcon }, { name: "Search", icon: SearchIcon }, { name: "Library", icon: LibraryIcon }];
 
 function Art({ film, detail = false }: { film: Film; detail?: boolean }) {
+  // Real catalog items carry a real thumbnail; render it in the same card frame (the bespoke
+  // per-title artwork below is only for the original demo placeholders).
+  if (film.real) {
+    return (
+      <div className="relative size-full overflow-hidden rounded-[inherit] bg-[#19372f] bg-cover bg-center" style={film.image ? { backgroundImage: `url("${film.image}")` } : undefined}>
+        {!film.image && <div className="grid size-full place-items-center p-3 text-center"><span className="text-[16px] font-semibold tracking-tight text-white/85">{film.title}</span></div>}
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,#0002,transparent_25%,#0003_55%,#000a)]" />
+        {!detail && <span className="absolute inset-x-0 bottom-0 line-clamp-2 p-3 text-left text-[14px] font-semibold text-white">{film.title}</span>}
+      </div>
+    );
+  }
   const titles: Record<string, string> = {
     furious: "inset-x-[-3%] top-[36%] rotate-[-17deg] scale-x-[.82] text-[44px] font-black text-[#ff2118]",
     disclosure: "inset-x-[3%] top-[43%] text-[24px] font-medium tracking-[1px] text-[#152823]",
@@ -146,6 +156,35 @@ const seriesSeasons: Record<string, number[]> = {
   city: [10, 8, 8],
 };
 
+/** Plays a title: YouTube embed or Cloudflare iframe, resolved via the backend playback endpoint. */
+function PlayerModal({ id, title, token, onClose }: { id: string; title: string; token: string | null; onClose: () => void }) {
+  const [state, setState] = useState<{ status: "loading" } | { status: "ready"; url: string } | { status: "error"; message: string }>({ status: "loading" });
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- surface the no-token case before fetching
+    if (!token) { setState({ status: "error", message: "Please sign in to watch." }); return; }
+    let live = true;
+    createPlayback(id, token, getDeviceId())
+      .then((pb) => { if (live) setState({ status: "ready", url: "embedUrl" in pb ? pb.embedUrl : pb.playerUrl }); })
+      .catch((e) => { if (live) setState({ status: "error", message: e instanceof Error ? e.message : "This title can’t be played right now." }); });
+    return () => { live = false; };
+  }, [id, token]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={`Playing ${title}`} onClick={onClose}>
+      <div className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl bg-black" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} aria-label="Close player" className="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full bg-black/60 text-[18px] text-white hover:bg-black/80">✕</button>
+        {state.status === "loading" ? <div className="grid size-full place-items-center text-white/60">Loading…</div>
+          : state.status === "error" ? <div className="grid size-full place-items-center px-6 text-center text-[13px] text-[#ff8f8f]">{state.message}</div>
+          : <iframe src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />}
+      </div>
+    </div>
+  );
+}
+
 function SeasonPicker({ value, count, onChange }: { value: number; count: number; onChange: (season: number) => void }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -220,27 +259,30 @@ function SeriesEpisodes({ film }: { film: Film }) {
   </section>;
 }
 
-function MovieDetail({ film, saved, onSave, onSelect, onNavigate }: {
+function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }: {
   film: Film;
+  pool: Film[];
   saved: boolean;
   onSave: () => void;
   onSelect: (film: Film) => void;
   onNavigate: (page: string) => void;
+  token: string | null;
 }) {
-  const [previewRequested, setPreviewRequested] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const isSeries = film.id in seriesSeasons;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") closeMovie(); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !playing) closeMovie(); };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-  const recommendations = films.filter(item => item.id !== film.id);
+  }, [playing]);
+  const recommendations = pool.filter(item => item.id !== film.id);
   const similar = [...recommendations.filter(item => item.genre === film.genre), ...recommendations.filter(item => item.genre !== film.genre)].slice(0, 6);
   const explore = [...recommendations].reverse().slice(0, 6);
   const cast = castByFilm[film.id];
   return <main className="relative isolate min-h-screen overflow-hidden bg-[#0e0d0f] pb-1 text-white">
+    {playing && <PlayerModal id={film.id} title={film.title} token={token} onClose={() => setPlaying(false)} />}
     <section className="relative mx-auto max-w-[1440px]">
       <div aria-hidden="true" className={`absolute inset-x-0 top-0 overflow-hidden lg:left-[34%] lg:h-[660px] ${isSeries ? "h-[370px]" : "h-[520px]"}`}>
         {isSeries ? <div className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${film.image}"), url("/art/${film.id}.svg")` }} /> : <Art film={film} detail />}
@@ -250,18 +292,18 @@ function MovieDetail({ film, saved, onSave, onSelect, onNavigate }: {
       <button onClick={closeMovie} aria-label="Back to browse" className="absolute top-5 left-[23px] z-10 grid size-9 place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-sm hover:bg-white/15 lg:top-8 lg:left-[60px]"><ChevronRightIcon className="size-5 rotate-180" /></button>
       <div className={`relative px-[23px] lg:max-w-[660px] lg:px-[60px] lg:pt-[210px] ${isSeries ? "pt-[200px]" : "pt-[300px]"}`}>
         <div className="flex h-[60px] items-center gap-[10px]">
-          <button aria-label={`Play ${film.title}`} onClick={() => setPreviewRequested(true)} className="grid size-[60px] place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-sm hover:bg-white/15"><PlayIcon className="size-[27px]" /></button>
+          <button aria-label={`Play ${film.title}`} onClick={() => setPlaying(true)} className="grid size-[60px] place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-sm hover:bg-white/15"><PlayIcon className="size-[27px]" /></button>
           <button aria-label={saved ? `Remove ${film.title} from library` : `Save ${film.title} to library`} aria-pressed={saved} onClick={onSave} className="grid size-11 place-items-center rounded-full text-white hover:bg-white/10">
             {saved ? <svg className="size-[27px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="m7.5 12 3 3 6-6" fill="none" stroke="#17332d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : <svg className="size-[27px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v10M7 12h10" strokeLinecap="round" /></svg>}
           </button>
-          <span className="ml-2 hidden text-[13px] text-white/50 lg:inline">{film.year} <span className="mx-2">·</span> ★ {film.rating}</span>
+          <span className="ml-2 hidden text-[13px] text-white/50 lg:inline">{film.year}{film.rating && <> <span className="mx-2">·</span> ★ {film.rating}</>}</span>
         </div>
-        <h1 ref={heading} tabIndex={-1} className="mt-[22px] text-[26px] leading-8 font-medium tracking-[-.04em] outline-none lg:text-[48px] lg:leading-[1.1]">{film.id === "dexter" ? "Dexter - New Blood" : film.title}</h1>
-        <p className="mt-[10px] max-w-[370px] text-[14px] leading-5 font-normal tracking-[-.02em] text-white/55 lg:max-w-[470px] lg:text-[16px] lg:leading-6">{film.id === "dexter" ? "Dexter Morgan has built a quiet new life in the small town of Iron Lake. But when his past returns, the dark instincts he thought he had left behind begin to surface." : film.description}</p>
-        {previewRequested && <div role="status" className="mt-4 flex max-w-[470px] items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3 text-[13px] leading-5 text-white/70"><span>Playback isn’t available for this title yet.</span><button aria-label="Dismiss playback message" className="ml-auto px-2 text-xl" onClick={() => setPreviewRequested(false)}>×</button></div>}
-        <p className="mt-9 text-[14px] leading-5 text-white/55">{film.genre}{film.id === "dexter" ? " & Mystery" : ""}</p>
+        <h1 ref={heading} tabIndex={-1} className="mt-[22px] text-[26px] leading-8 font-medium tracking-[-.04em] outline-none lg:text-[48px] lg:leading-[1.1]">{film.title}</h1>
+        {film.tagline && <p className="mt-2 text-[15px] text-white/45 italic">{film.tagline}</p>}
+        <p className="mt-[10px] max-w-[370px] text-[14px] leading-5 font-normal tracking-[-.02em] text-white/55 lg:max-w-[470px] lg:text-[16px] lg:leading-6">{film.description}</p>
+        <p className="mt-9 text-[14px] leading-5 text-white/55">{film.genre}</p>
         <div aria-label={cast ? "Cast" : "Title information"} className="mt-4 flex max-w-[345px] flex-wrap gap-2 lg:max-w-none">
-          {(cast || [film.year, film.genre, `★ ${film.rating}`]).map(label => <span key={label} className="rounded-full bg-white/8 px-[13px] py-[7px] text-[14px] leading-[18px] tracking-[-.02em] text-white/65">{label}</span>)}
+          {(cast || [film.year, film.genre, ...(film.rating ? [`★ ${film.rating}`] : [])]).map(label => <span key={label} className="rounded-full bg-white/8 px-[13px] py-[7px] text-[14px] leading-[18px] tracking-[-.02em] text-white/65">{label}</span>)}
         </div>
       </div>
     </section>
@@ -293,21 +335,82 @@ function Avatar({ user }: { user: { avatarUrl?: string | null; displayName?: str
 }
 
 export default function StreamingApp() {
-  const { signOut, user } = useAuth();
+  const { signOut, user, accessToken } = useAuth();
   const [page, setPage] = useState("Home");
-  const [genre, setGenre] = useState("Thrill");
+  const [genre, setGenre] = useState("All");
   const [hero, setHero] = useState(0);
   const [query, setQuery] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   const selectedId = useSyncExternalStore(subscribeMovie, movieSnapshot, () => "");
-  const selected = films.find(film => film.id === selectedId) || null;
+
+  // Catalog from the backend
+  const [films, setFilms] = useState<Film[]>([]);
+  const [featuredFilms, setFeaturedFilms] = useState<Film[]>([]);
+  const [genres, setGenres] = useState<string[]>(["All"]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Watchlist ("My list")
+  const [watchlist, setWatchlist] = useState<Film[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
+
+  // Search + selected title
+  const [results, setResults] = useState<Film[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<Film | null>(null);
+
   const browseScroll = useRef(0);
-  const library = useSyncExternalStore(subscribeLibrary, librarySnapshot, () => "[]");
-  let saved: string[] = [];
-  try { const parsed = JSON.parse(library); if (Array.isArray(parsed)) saved = parsed.filter((id): id is string => typeof id === "string"); } catch { }
   const carousel = useRef<HTMLDivElement>(null);
-  const featured = genre === "Thrill" ? [films[0], films[1], films[6]] : films.filter(f => f.genre === genre);
-  const current = featured[Math.min(hero, featured.length - 1)];
+  const featured = (genre === "All" ? (featuredFilms.length ? featuredFilms : films) : films.filter(f => f.genre === genre)).slice(0, 6);
+  const current = featured[Math.min(hero, Math.max(featured.length - 1, 0))];
+  const landscape = [...films].reverse().slice(0, 8);
+
+  useEffect(() => {
+    let live = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before the catalog fetch
+    setLoading(true); setLoadError(null);
+    Promise.all([getFeatured(), discover({ limit: 50 }), getTaxonomy()])
+      .then(([f, d, tax]) => {
+        if (!live) return;
+        setFilms(d.items.map(toFilm));
+        setFeaturedFilms(f.map(toFilm));
+        const present = tax.categories.filter(cat => d.items.some(c => c.categories.some(x => x.id === cat.id))).map(cat => cat.name);
+        setGenres(["All", ...present]);
+      })
+      .catch(e => { if (live) setLoadError(e instanceof Error ? e.message : "Couldn’t load titles."); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let live = true;
+    getWatchlist(accessToken).then(r => { if (!live) return; const items = r.items.map(toFilm); setWatchlist(items); setSaved(items.map(i => i.id)); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [accessToken]);
+
+  // Resolve the ?movie=<id> title, fetching it when it isn't already loaded (deep links).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync selected title to the URL param
+    if (!selectedId) { setSelected(null); return; }
+    const found = films.find(f => f.id === selectedId) ?? watchlist.find(f => f.id === selectedId) ?? results.find(f => f.id === selectedId) ?? null;
+    if (found) { setSelected(found); return; }
+    let live = true;
+    getContent(selectedId, accessToken).then(c => { if (live) setSelected(toFilm(c)); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [selectedId, films, watchlist, results, accessToken]);
+
+  useEffect(() => {
+    if (page !== "Search") return;
+    const q = query.trim();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- debounced search state
+    if (!q) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      discover({ q, limit: 30 }).then(r => setResults(r.items.map(toFilm))).catch(() => setResults([])).finally(() => setSearching(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, page]);
 
   function centerSlide(track: HTMLDivElement, slide: Element, behavior: ScrollBehavior) {
     const element = slide as HTMLElement;
@@ -323,7 +426,7 @@ export default function StreamingApp() {
     return () => cancelAnimationFrame(frame);
   }, [genre, featured.length, page, selectedId]);
   useEffect(() => {
-    if (page !== "Home" || selected || featured.length < 2) return;
+    if (page !== "Home" || selectedId || featured.length < 2) return;
     const timer = window.setInterval(() => {
       setHero(index => {
         const next = (index + 1) % featured.length;
@@ -334,16 +437,20 @@ export default function StreamingApp() {
       });
     }, 5500);
     return () => window.clearInterval(timer);
-  }, [genre, featured.length, page, selected]);
+  }, [genre, featured.length, page, selectedId]);
   useEffect(() => {
     window.scrollTo({ top: selectedId ? 0 : browseScroll.current, behavior: "instant" });
   }, [selectedId]);
-  function toggleSave(film: Film) {
-    const next = saved.includes(film.id) ? saved.filter(id => id !== film.id) : [...saved, film.id];
-    try { localStorage.setItem("streamline-library", JSON.stringify(next)); window.dispatchEvent(new Event("library-change")); } catch { }
+  async function toggleSave(film: Film) {
+    if (!accessToken) return;
+    const has = saved.includes(film.id);
+    setSaved(prev => has ? prev.filter(id => id !== film.id) : [...prev, film.id]);
+    setWatchlist(prev => has ? prev.filter(i => i.id !== film.id) : [film, ...prev]);
+    try { await (has ? removeFromWatchlist(film.id, accessToken) : addToWatchlist(film.id, accessToken)); }
+    catch { getWatchlist(accessToken).then(r => { const items = r.items.map(toFilm); setWatchlist(items); setSaved(items.map(i => i.id)); }).catch(() => undefined); }
   }
   function open(film: Film) {
-    if (!selected) browseScroll.current = window.scrollY;
+    if (!selectedId) browseScroll.current = window.scrollY;
     const url = new URL(window.location.href);
     url.searchParams.set("movie", film.id);
     window.history.pushState({ ...window.history.state, streamlineMovie: true }, "", url);
@@ -356,7 +463,10 @@ export default function StreamingApp() {
     await signOut();
   }
 
-  if (selected) return <MovieDetail key={selected.id} film={selected} saved={saved.includes(selected.id)} onSave={() => toggleSave(selected)} onSelect={open} onNavigate={(destination) => { closeMovie(); navigate(destination); }} />;
+  if (selectedId) {
+    if (!selected) return <main className="grid min-h-screen place-items-center bg-[#0e0d0f] text-white/50">Loading…</main>;
+    return <MovieDetail key={selected.id} film={selected} pool={films} saved={saved.includes(selected.id)} onSave={() => toggleSave(selected)} onSelect={open} onNavigate={(destination) => { closeMovie(); navigate(destination); }} token={accessToken} />;
+  }
 
   return <div className="min-h-screen bg-[radial-gradient(ellipse_at_35%_0%,#09231f_0%,#0b1715_22%,#0c0c0d_52%)] lg:bg-[radial-gradient(ellipse_at_65%_0%,#122823_0,#101917_25%,#0c0d0e_65%)]">
     <aside className="fixed inset-y-0 left-0 z-[25] hidden w-[200px] flex-col border-r border-[#ffffff07] bg-[#0c100fee] px-6 py-[37px] shadow-[inset_-1px_0_0_#ffffff06,8px_0_40px_#09231f12] backdrop-blur-xl lg:flex min-[1450px]:w-[220px] min-[1450px]:px-7">
@@ -370,12 +480,22 @@ export default function StreamingApp() {
         <div>Discover your next <span className="text-[#c4cec8]">great watch.</span></div>
         <div className="flex items-center gap-[23px]"><button className="bg-transparent text-[#c3cbc7]" aria-label="Search movies and shows" onClick={() => navigate("Search")}><SearchIcon className="size-5" /></button><span className="h-[19px] w-px bg-[#ffffff14]" /><button className="grid size-8 place-items-center overflow-hidden rounded-full bg-[#4f173d] text-[14px] font-semibold text-[#b7669b]" aria-label="Open profile" onClick={() => navigate("Profile")}><Avatar user={user} /></button></div>
       </header>
-      {page === "Home" ? <>
+      {page === "Home" ? (loading ? (
+        <p className="px-[23px] py-20 text-center text-white/40 lg:px-0">Loading titles…</p>
+      ) : loadError ? (
+        <p role="alert" className="px-[23px] py-20 text-center text-[#ff8f8f] lg:px-0">{loadError}</p>
+      ) : films.length === 0 ? (
+        <div className="px-[23px] py-24 text-center text-[#a1aba6] lg:px-0">
+          <h2 className="text-[22px] text-white">No titles yet.</h2>
+          <p className="mt-3 text-[14px]">Published videos will appear here.</p>
+          {user?.role === "ADMIN" && <Link href="/admin" className="mt-5 inline-flex rounded-[7px] bg-white px-5 py-2.5 text-[13px] font-semibold text-[#13201c]">Add a video</Link>}
+        </div>
+      ) : <>
         <div className="flex items-center gap-2 overflow-x-auto px-[23px] [scrollbar-width:none] lg:mb-[25px] lg:px-0 [&::-webkit-scrollbar]:hidden" aria-label="Browse genres">
           {genres.map(g => <button key={g} aria-pressed={genre === g} className={`flex h-[38px] shrink-0 items-center justify-center gap-[10px] rounded-[60px] px-[18px] py-2 text-[16px] leading-[1.4] font-normal tracking-[-.04em] whitespace-nowrap ${genre === g ? "bg-white text-black" : "bg-white/8 text-[#d8d8d8] hover:bg-white/15"}`} onClick={() => { setGenre(g); setHero(0); }}>{g}</button>)}
           <span className="ml-auto hidden whitespace-nowrap text-[8px] tracking-[2px] text-[#61786c] lg:block">HANDPICKED FOR YOU</span>
         </div>
-        <section className="relative mb-[37px] hidden h-[405px] overflow-hidden rounded-[13px] border border-[#ffffff0b] bg-[#0a302b] lg:block min-[1450px]:h-[440px]" aria-label="Featured title">
+        {current && <section className="relative mb-[37px] hidden h-[405px] overflow-hidden rounded-[13px] border border-[#ffffff0b] bg-[#0a302b] lg:block min-[1450px]:h-[440px]" aria-label="Featured title">
           <div className={`absolute inset-0 bg-cover bg-[position:center_55%] opacity-55 saturate-[.6] ${current.id === "furious" ? "bg-[#08695f] bg-blend-luminosity" : ""}`} style={{ backgroundImage: `url("${current.image}"), url("/art/${current.id}.svg")` }} />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,#081c19_3%,#0a201bd9_30%,#0e282052_70%,#142e2466),linear-gradient(0deg,#081a18a0,transparent_35%)]" />
           <div className="relative z-[2] w-[62%] max-w-[630px] px-[38px] py-[47px] min-[1450px]:px-12 min-[1450px]:py-[55px]">
@@ -387,8 +507,8 @@ export default function StreamingApp() {
           </div>
           <div className="absolute top-7 right-[8%] h-[315px] w-[235px] rotate-[9deg] rounded-[10px] shadow-[0_20px_60px_#0008] min-[1450px]:top-[30px] min-[1450px]:right-[12%] min-[1450px]:h-[350px] min-[1450px]:w-[260px]"><Art film={current} /></div>
           <div className="absolute right-[30px] bottom-5 flex items-center gap-[6px]">{featured.map((f, i) => <button key={f.id} className={`h-1 rounded-[10px] p-0 ${hero === i ? "w-[23px] bg-[#e2ebe6]" : "w-[5px] bg-[#b8c6be55]"}`} aria-label={`Feature ${f.title}`} onClick={() => setHero(i)} />)}<span className="ml-[10px] text-[9px] tracking-[1px] text-[#9bad9f]">{String(hero + 1).padStart(2, "0")} / {String(featured.length).padStart(2, "0")}</span></div>
-        </section>
-        <section className="mt-10 mb-[84px] lg:hidden">
+        </section>}
+        {current && <section className="mt-10 mb-[84px] lg:hidden">
           <div className="relative flex snap-x snap-mandatory scroll-px-[calc((100%-282px)/2)] gap-[22px] overflow-x-auto px-[calc((100%-282px)/2)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" ref={carousel} onScroll={e => {
             const track = e.currentTarget;
             const center = track.scrollLeft + track.clientWidth / 2;
@@ -408,34 +528,34 @@ export default function StreamingApp() {
             })}
           </div>
           <h1 className="mt-[18px] mb-1 text-center text-[16px] leading-[19px] font-medium tracking-[-.04em] text-white">{current.title}</h1>
-          <div className="flex justify-center gap-[6px] text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">{current.genre}<span>{current.rating} <b className="font-normal text-[#ffc346]">★</b></span></div>
-        </section>
-        <FilmRow title="New Releases" first items={genre === "Thrill" ? films.slice(1, 6) : films.filter(f => f.genre === genre)} onSelect={open} />
-        <FilmRow title="Top 10 IMDB This Week" items={[films[6], films[7], films[8], films[9], films[10], films[0], films[1], films[2], films[3], films[4]]} onSelect={open} />
-        <section className="mb-16 flex flex-col gap-[18px] lg:mb-[33px]">
-          <SectionHeading title="Watch Yellowstone" />
+          <div className="flex justify-center gap-[6px] text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">{current.genre}{current.rating && <span>{current.rating} <b className="font-normal text-[#ffc346]">★</b></span>}</div>
+        </section>}
+        <FilmRow title="New Releases" first items={genre === "All" ? films.slice(0, 12) : films.filter(f => f.genre === genre)} onSelect={open} />
+        <FilmRow title="Top Rated" items={[...films].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0)).slice(0, 10)} onSelect={open} />
+        {landscape.length > 0 && <section className="mb-16 flex flex-col gap-[18px] lg:mb-[33px]">
+          <SectionHeading title="Keep Exploring" />
           <div className="flex snap-x snap-proximity scroll-px-[23px] gap-[10px] overflow-x-auto px-[23px] [scrollbar-width:none] lg:scroll-px-0 lg:px-0 [&::-webkit-scrollbar]:hidden">
-            {["Best of The Duttons vs. Everyone | Yellowstone", "Best of The Duttons | Yellowstone", "The land. The legacy. | Yellowstone"].map((title, i) => <button className="flex w-[275px] shrink-0 snap-start flex-col gap-[7px] bg-transparent p-0 text-left" key={title} onClick={() => open(films[10])}>
-              <div className={`relative h-[179px] w-[275px] overflow-hidden rounded-[7px] bg-cover bg-center before:absolute before:inset-0 before:content-[''] ${i === 0 ? "bg-[#e6b300] bg-blend-luminosity before:bg-[linear-gradient(transparent_20%,#d59e00b0)]" : "bg-[#6f7660] before:bg-[linear-gradient(transparent,#0009)]"}`} style={{ backgroundImage: `url("${[films[10].image, photo("photo-1519681393784-d120267933ba"), photo("photo-1472396961693-142e6e269027")][i]}"), url("/art/yellowstone.svg")` }}>
-                <span className="absolute bottom-6 left-[14px] text-[22px] font-bold tracking-[1px] [font-family:Georgia,serif]">{i === 0 ? "THE DUTTONS" : "YELLOWSTONE"}</span>
-                <span className="absolute right-[10px] bottom-[7px] flex h-5 min-w-11 items-center justify-center rounded-[6px] bg-black/50 px-[10px] py-[3px] text-[12px] leading-[14px] font-normal tracking-[-.04em]">{["5:10", "6:42", "4:58"][i]}</span>
+            {landscape.map(f => <button className="flex w-[275px] shrink-0 snap-start flex-col gap-[7px] bg-transparent p-0 text-left" key={f.id} onClick={() => open(f)}>
+              <div className="relative h-[179px] w-[275px] overflow-hidden rounded-[7px] bg-[#26342e] bg-cover bg-center before:absolute before:inset-0 before:bg-[linear-gradient(transparent,#0009)] before:content-['']" style={f.image ? { backgroundImage: `url("${f.image}")` } : undefined}>
+                <span className="absolute right-[10px] bottom-[7px] grid size-9 place-items-center rounded-full bg-black/45 text-white/80"><PlayIcon className="size-[18px]" /></span>
               </div>
-              <div className="flex w-full flex-col gap-px"><h3 className="w-full truncate text-[16px] leading-[19px] font-medium tracking-[-.04em] text-white">{title}</h3><p className="text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">S2 EP | {10 + i}</p></div>
+              <div className="flex w-full flex-col gap-px"><h3 className="w-full truncate text-[16px] leading-[19px] font-medium tracking-[-.04em] text-white">{f.title}</h3><p className="text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">{f.year} · {f.genre}</p></div>
             </button>)}
           </div>
-        </section>
+        </section>}
         <footer className="mt-[45px] hidden items-center justify-between border-t border-[#ffffff08] pt-[25px] text-[10px] text-[#48544d] lg:flex"><span className="text-[15px] font-bold tracking-[-1px] text-[#74847a]">streamline.</span><span>Your next story starts here.</span><span>Made for movie nights.</span></footer>
-      </> : page === "Profile" ? <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
-        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center overflow-hidden rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]"><Avatar user={user} /></span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="text-[#9caaa3]">{user?.email}</p><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><div className="flex flex-wrap items-center justify-center gap-3"><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton><button type="button" disabled={signingOut} onClick={() => void logout()} className="inline-flex min-h-[43px] items-center justify-center rounded-[7px] border border-white/15 bg-white/5 px-[21px] text-[13px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50">{signingOut ? "Logging out…" : "Log out"}</button></div></div>
+      </>) : page === "Profile" ? <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
+        <div className="flex flex-col items-center py-[70px] text-center lg:pt-[50px]"><span className="mb-[30px] grid size-20 place-items-center overflow-hidden rounded-full bg-[#4f173d] text-[35px] font-semibold text-[#b7669b]"><Avatar user={user} /></span><FeatureLabel>YOUR PERSONAL SCREENING ROOM</FeatureLabel><h1 className="mt-5 mb-2 text-[28px] tracking-[-1px] lg:text-[38px]">Hello, movie lover.</h1><p className="text-[#9caaa3]">{user?.email}</p><p className="mb-[30px] text-[#9caaa3]">Your stories, all in one place.</p><div className="flex flex-wrap items-center justify-center gap-3"><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton>{user?.role === "ADMIN" && <Link href="/admin" className="inline-flex min-h-[43px] items-center justify-center gap-2 rounded-[7px] border border-[#c0d8cc]/40 bg-[#c0d8cc]/10 px-[21px] text-[13px] font-semibold text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/20">Admin panel</Link>}<button type="button" disabled={signingOut} onClick={() => void logout()} className="inline-flex min-h-[43px] items-center justify-center rounded-[7px] border border-white/15 bg-white/5 px-[21px] text-[13px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50">{signingOut ? "Logging out…" : "Log out"}</button></div></div>
       </section> : <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
         {/* <FeatureLabel>{page === "Search" ? "FIND YOUR NEXT FAVORITE" : "SAVED FOR A GOOD NIGHT"}</FeatureLabel> */}
         <h1 className="mt-5 mb-7 text-[28px] tracking-[-1px] lg:text-[38px]">{page === "Search" ? "What are you looking for?" : "Your library"}</h1>
         {page === "Search" && <label className="mb-[30px] flex h-[60px] w-full max-w-full items-center justify-between gap-[19px] rounded-[50px] bg-white/15 px-[18px] py-[14px] focus-within:ring-1 focus-within:ring-white/30"><input className="min-w-0 flex-1 border-0 bg-transparent text-[18px] leading-[21px] font-medium tracking-[-.04em] text-white outline-none placeholder:text-white/50" aria-label="Search movies, shows, and genres" autoFocus placeholder="Search for your Favourite Movie" value={query} onChange={e => setQuery(e.target.value)} /><SearchIcon className="size-8 shrink-0 text-white/50" /></label>}
         <div className="grid grid-cols-2 gap-x-3 gap-y-6 lg:grid-cols-5 lg:gap-x-4 lg:gap-y-7">
-          {films.filter(f => page === "Library" ? saved.includes(f.id) : `${f.title} ${f.genre}`.toLowerCase().includes(query.toLowerCase())).map(f => <button className="min-w-0 bg-transparent p-0 text-left" key={f.id} onClick={() => open(f)}><div className="aspect-[236/317] rounded-lg"><Art film={f} /></div><h3 className="mt-[9px] mb-[5px] text-[16px] leading-[19px] font-medium tracking-[-.04em]">{f.title}</h3><p className="text-[14px] leading-4 font-normal text-white/50">{f.year} · {f.genre}</p></button>)}
+          {(page === "Library" ? watchlist : results).map(f => <button className="min-w-0 bg-transparent p-0 text-left" key={f.id} onClick={() => open(f)}><div className="aspect-[236/317] rounded-lg"><Art film={f} /></div><h3 className="mt-[9px] mb-[5px] text-[16px] leading-[19px] font-medium tracking-[-.04em]">{f.title}</h3><p className="text-[14px] leading-4 font-normal text-white/50">{f.year} · {f.genre}</p></button>)}
         </div>
-        {page === "Library" && !saved.length && <div className="py-[55px] text-center text-[#a1aba6]"><LibraryIcon className="m-auto size-10" /><h2 className="text-[20px] text-white">A good story is worth saving.</h2><p className="mt-[14px] mb-[25px] text-[14px]">Add titles to your list to find them here.</p><ActionButton onClick={() => navigate("Home")}>Explore titles</ActionButton></div>}
-        {page === "Search" && !films.some(f => `${f.title} ${f.genre}`.toLowerCase().includes(query.toLowerCase())) && <p className="py-[55px] text-center text-[#a1aba6]">No titles found. Try another title or genre.</p>}
+        {page === "Search" && searching && <p className="py-10 text-center text-white/40">Searching…</p>}
+        {page === "Library" && watchlist.length === 0 && <div className="py-[55px] text-center text-[#a1aba6]"><LibraryIcon className="m-auto size-10" /><h2 className="text-[20px] text-white">A good story is worth saving.</h2><p className="mt-[14px] mb-[25px] text-[14px]">Add titles to your list to find them here.</p><ActionButton onClick={() => navigate("Home")}>Explore titles</ActionButton></div>}
+        {page === "Search" && !searching && query.trim() && results.length === 0 && <p className="py-[55px] text-center text-[#a1aba6]">No titles found. Try another title or genre.</p>}
       </section>}
     </main>
     <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>

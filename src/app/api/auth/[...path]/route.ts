@@ -12,6 +12,7 @@ const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
 const POST_ROUTES = new Set([
   "register", "login", "verify-email", "verification-status", "resend-verification",
   "forgot-password", "reset-password", "google/exchange", "apple", "refresh", "logout",
+  "admin-access",
 ]);
 const GET_ROUTES = new Set(["me"]);
 
