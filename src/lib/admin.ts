@@ -47,6 +47,12 @@ export type UpdateContentBody = {
 export const updateContent = (id: string, body: UpdateContentBody, token: string) =>
   apiFetch<ApiContent>(`content/${id}`, { method: "PATCH", body, token });
 
+export const uploadPoster = (file: File, token: string) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<{ url: string }>("content/poster-upload", { method: "POST", body: form, token });
+};
+
 // --- Dashboard reads ---
 export type Overview = {
   metricDate: string;

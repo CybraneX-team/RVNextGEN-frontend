@@ -31,6 +31,21 @@ function closeMovie() {
 
 type Film = { id: string; title: string; genre: string; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean };
 const GENRE_BY_TYPE: Record<string, string> = { MOVIE: "Movie", SERIES: "Series", EPISODE: "Episode", SHORT: "Short" };
+// These shipped poster files are intentionally used ahead of database URLs so the catalogue
+// remains visible to every visitor, including when the API is running on a different host.
+const BUILT_IN_POSTERS: Record<string, string> = {
+  "disclosure day": "/posters/disclosure-day.png",
+  "the furious": "/posters/the-furious.png",
+  "city on a hill": "/posters/city-on-a-hill.png",
+  "arctic to africa": "/posters/arctic-to-africa.png",
+  "mernicorn starfall": "/posters/mernicorn-starfall.png",
+  "mortal kombat ii": "/posters/mortal-kombat-ii.png",
+  "dexter new blood": "/posters/dexter-new-blood.png",
+  iaux: "/posters/iaux.png",
+};
+function builtInPoster(title: string) {
+  return BUILT_IN_POSTERS[title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()];
+}
 /** Maps a backend content item into the shape the existing UI renders. */
 function toFilm(c: ApiContent): Film {
   return {
@@ -39,7 +54,7 @@ function toFilm(c: ApiContent): Film {
     genre: c.categories[0]?.name ?? GENRE_BY_TYPE[c.type] ?? "Movie",
     year: (c.releaseDate ? new Date(c.releaseDate) : new Date(c.createdAt)).getFullYear().toString(),
     rating: c.rating != null ? c.rating.toFixed(1) : "",
-    image: c.posterUrl ?? "",
+    image: builtInPoster(c.title) ?? c.posterUrl ?? "",
     tagline: c.tagline ?? "",
     description: c.description ?? "",
     real: true,

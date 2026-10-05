@@ -19,16 +19,17 @@ type ApiOptions = {
  */
 export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { method = "GET", body, token, deviceId, signal } = opts;
+  const isFormData = body instanceof FormData;
   let response: Response;
   try {
     response = await fetch(`${API_URL}/api/${path}`, {
       method,
       headers: {
-        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(body !== undefined && !isFormData ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(deviceId ? { "x-device-id": deviceId } : {}),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isFormData ? body as BodyInit : JSON.stringify(body),
       cache: "no-store",
       signal,
     });
