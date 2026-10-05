@@ -8,4 +8,6 @@ import AdminDashboard from "./admin/AdminDashboard";
 export default function AdminApp() {
   const { user } = useAuth();
   return user?.role === "ADMIN" ? <AdminDashboard /> : <GrantAdminForm />;
+  
 }
+
