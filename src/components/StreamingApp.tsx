@@ -39,6 +39,7 @@ const BUILT_IN_POSTERS: Record<string, string> = {
   "city on a hill": "/posters/city-on-a-hill.png",
   "arctic to africa": "/posters/arctic-to-africa.png",
   "mernicorn starfall": "/posters/mernicorn-starfall.png",
+  "mermicorno starfall": "/posters/mernicorn-starfall.png",
   "mortal kombat ii": "/posters/mortal-kombat-ii.png",
   "dexter new blood": "/posters/dexter-new-blood.png",
   iaux: "/posters/iaux.png",
