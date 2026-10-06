@@ -82,12 +82,35 @@ export type AdminUpload = {
 export const adminUploads = (token: string, q?: string, status?: "direct" | "generated") =>
   apiFetch<Paginated<AdminUpload>>(`admin/uploads${listQuery({ q, status })}`, { token });
 
+// --- Grant credits to a user (testing without a payment system) ---
+export const grantCredits = (userId: string, amount: number, reason: string, token: string) =>
+  apiFetch<{ id: string; creditsBalance: number }>(`admin/users/${userId}/credits/grant`, {
+    method: "POST",
+    body: { amount, reason },
+    token,
+  });
+
+// --- Credit rates (cost per model) ---
 export type CreditRate = {
   id: string; provider: string; operation: "TEXT" | "IMAGE" | "VIDEO"; model: string;
   inrCostPaise: number; creditCost: number; isActive: boolean;
 };
 export const adminCreditRates = (token: string) =>
   apiFetch<Paginated<CreditRate>>("admin/credit-rates", { token });
+
+export type CreateCreditRateBody = {
+  provider: string;
+  operation: "TEXT" | "IMAGE" | "VIDEO";
+  model: string;
+  inrCostPaise: number;
+  creditCost: number;
+};
+export const createCreditRate = (body: CreateCreditRateBody, token: string) =>
+  apiFetch<CreditRate>("admin/credit-rates", { method: "POST", body, token });
+
+export type UpdateCreditRateBody = { inrCostPaise?: number; creditCost?: number; isActive?: boolean };
+export const updateCreditRate = (id: string, body: UpdateCreditRateBody, token: string) =>
+  apiFetch<CreditRate>(`admin/credit-rates/${id}`, { method: "PATCH", body, token });
 
 function listQuery(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();

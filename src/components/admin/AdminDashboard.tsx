@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import {
-  adminCreditRates, adminOverview, adminUploads, adminUsers,
+  adminCreditRates, adminOverview, adminUploads, adminUsers, createCreditRate, updateCreditRate,
   type AdminUpload, type AdminUser, type CreditRate, type Overview,
 } from "@/lib/admin";
 import AddVideo from "./AddVideo";
 import EditContentModal from "./EditContentModal";
+import GrantCreditsDialog from "./GrantCreditsDialog";
 
 const TABS = ["Overview", "Users", "Content", "Cost", "Add video"] as const;
 type Tab = (typeof TABS)[number];
@@ -58,20 +59,23 @@ function OverviewPanel({ token }: { token: string }) {
 
 function UsersPanel({ token }: { token: string }) {
   const [q, setQ] = useState("");
-  const { data, error, loading } = useAsync((tok) => adminUsers(tok, q || undefined), token, [q]);
+  const { data, error, loading, reload } = useAsync((tok) => adminUsers(tok, q || undefined), token, [q]);
+  const [grantUser, setGrantUser] = useState<AdminUser | null>(null);
   return (
     <div>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email or name…" className="mb-3 h-10 w-full max-w-sm rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[13px] text-white outline-none placeholder:text-white/35 focus:border-white/30" />
       {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
         <div className="overflow-x-auto rounded-xl border border-white/8">
           <table className="w-full border-collapse">
-            <thead className="bg-white/[0.03]"><tr><th className={th}>Email</th><th className={th}>Name</th><th className={th}>Role</th><th className={th}>Credits</th><th className={th}>Verified</th></tr></thead>
+            <thead className="bg-white/[0.03]"><tr><th className={th}>Email</th><th className={th}>Name</th><th className={th}>Role</th><th className={th}>Credits</th><th className={th}>Verified</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((u: AdminUser) => (
-              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{u.creditsBalance}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td></tr>
+              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{u.creditsBalance}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td><td className={td}><button onClick={() => setGrantUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">＋ Credits</button></td></tr>
             ))}</tbody>
           </table>
+          {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No users found.</p>}
         </div>
       )}
+      {grantUser && <GrantCreditsDialog user={grantUser} token={token} onClose={() => setGrantUser(null)} onGranted={reload} />}
     </div>
   );
 }
@@ -106,19 +110,126 @@ function ContentPanel({ token }: { token: string }) {
   );
 }
 
-function CostPanel({ token }: { token: string }) {
-  const { data, error, loading } = useAsync((tok) => adminCreditRates(tok), token);
-  if (loading) return <Loading />;
-  if (error) return <ErrorLine text={error} />;
+const smallInput = "h-9 w-full rounded-md border border-white/12 bg-white/[0.04] px-2 text-[13px] text-white outline-none focus:border-white/30";
+
+/** One editable credit-rate row: shows values, or credits/INR/active inputs while editing. */
+function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [creditCost, setCreditCost] = useState(String(rate.creditCost));
+  const [inr, setInr] = useState((rate.inrCostPaise / 100).toFixed(2));
+  const [active, setActive] = useState(rate.isActive);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const credits = Number(creditCost);
+    const inrPaise = Math.round(Number(inr) * 100);
+    if (!Number.isInteger(credits) || credits <= 0) { setError("Credits must be a whole number > 0"); return; }
+    if (!Number.isInteger(inrPaise) || inrPaise <= 0) { setError("INR cost must be greater than 0"); return; }
+    setBusy(true); setError(null);
+    try {
+      await updateCreditRate(rate.id, { creditCost: credits, inrCostPaise: inrPaise, isActive: active }, token);
+      setEditing(false);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <tr className="border-t border-white/5">
+        <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
+        <td className={td}>₹{(rate.inrCostPaise / 100).toFixed(2)}</td><td className={td}>{rate.creditCost}</td><td className={td}>{rate.isActive ? "Yes" : "No"}</td>
+        <td className={td}><button onClick={() => setEditing(true)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
+      </tr>
+    );
+  }
   return (
-    <div className="overflow-x-auto rounded-xl border border-white/8">
-      <table className="w-full border-collapse">
-        <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>INR cost</th><th className={th}>Credits</th><th className={th}>Active</th></tr></thead>
-        <tbody>{data?.items.map((r: CreditRate) => (
-          <tr key={r.id} className="border-t border-white/5"><td className={td}>{r.provider}</td><td className={td}>{r.operation}</td><td className={td}>{r.model}</td><td className={td}>₹{(r.inrCostPaise / 100).toFixed(2)}</td><td className={td}>{r.creditCost}</td><td className={td}>{r.isActive ? "Yes" : "No"}</td></tr>
-        ))}</tbody>
-      </table>
-      {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No credit rates configured yet.</p>}
+    <tr className="border-t border-white/5">
+      <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
+      <td className={td}><input className={smallInput} type="number" min={0} step={0.01} value={inr} onChange={(e) => setInr(e.target.value)} /></td>
+      <td className={td}><input className={smallInput} type="number" min={1} step={1} value={creditCost} onChange={(e) => setCreditCost(e.target.value)} /></td>
+      <td className={td}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-[#2f7d5b]" /></td>
+      <td className={td}>
+        <div className="flex gap-1.5">
+          <button onClick={save} disabled={busy} className="rounded-md bg-[#2f7d5b] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Save"}</button>
+          <button onClick={() => { setEditing(false); setError(null); }} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button>
+        </div>
+        {error && <p role="alert" className="mt-1 text-[11px] text-[#ff8f8f]">{error}</p>}
+      </td>
+    </tr>
+  );
+}
+
+const OPERATIONS = ["TEXT", "IMAGE", "VIDEO"] as const;
+
+/** Inline "add rate" form so admins can register a new model + its cost. */
+function AddRateForm({ token, onAdded }: { token: string; onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [provider, setProvider] = useState("");
+  const [operation, setOperation] = useState<(typeof OPERATIONS)[number]>("TEXT");
+  const [model, setModel] = useState("");
+  const [creditCost, setCreditCost] = useState("");
+  const [inr, setInr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function add() {
+    const credits = Number(creditCost);
+    const inrPaise = Math.round(Number(inr) * 100);
+    if (!provider.trim() || !model.trim()) { setError("Provider and model are required"); return; }
+    if (!Number.isInteger(credits) || credits <= 0) { setError("Credits must be a whole number > 0"); return; }
+    if (!Number.isInteger(inrPaise) || inrPaise <= 0) { setError("INR cost must be greater than 0"); return; }
+    setBusy(true); setError(null);
+    try {
+      await createCreditRate({ provider: provider.trim(), operation, model: model.trim(), creditCost: credits, inrCostPaise: inrPaise }, token);
+      setProvider(""); setModel(""); setCreditCost(""); setInr(""); setOperation("TEXT"); setOpen(false);
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add rate");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) return <button onClick={() => setOpen(true)} className="mb-3 rounded-lg border border-white/15 px-4 py-2 text-[13px] font-medium text-white/80 hover:bg-white/10">＋ Add rate</button>;
+  return (
+    <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      {error && <p role="alert" className="mb-2 text-[13px] text-[#ff8f8f]">{error}</p>}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div><span className="mb-1 block text-[11px] text-white/45">Provider</span><input className={smallInput} value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="openai" /></div>
+        <div><span className="mb-1 block text-[11px] text-white/45">Operation</span><select className={smallInput} value={operation} onChange={(e) => setOperation(e.target.value as (typeof OPERATIONS)[number])}>{OPERATIONS.map((o) => <option key={o} value={o} className="bg-[#14171a]">{o}</option>)}</select></div>
+        <div><span className="mb-1 block text-[11px] text-white/45">Model</span><input className={smallInput} value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" /></div>
+        <div><span className="mb-1 block text-[11px] text-white/45">INR cost</span><input className={smallInput} type="number" min={0} step={0.01} value={inr} onChange={(e) => setInr(e.target.value)} placeholder="1.00" /></div>
+        <div><span className="mb-1 block text-[11px] text-white/45">Credits</span><input className={smallInput} type="number" min={1} step={1} value={creditCost} onChange={(e) => setCreditCost(e.target.value)} placeholder="1" /></div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button onClick={add} disabled={busy} className="rounded-lg bg-[#2f7d5b] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "Adding…" : "Add rate"}</button>
+        <button onClick={() => { setOpen(false); setError(null); }} className="rounded-lg border border-white/12 px-4 py-2 text-[13px] text-white/70 hover:bg-white/5">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function CostPanel({ token }: { token: string }) {
+  const { data, error, loading, reload } = useAsync((tok) => adminCreditRates(tok), token);
+  return (
+    <div>
+      <AddRateForm token={token} onAdded={reload} />
+      {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
+        <div className="overflow-x-auto rounded-xl border border-white/8">
+          <table className="w-full border-collapse">
+            <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>INR cost</th><th className={th}>Credits</th><th className={th}>Active</th><th className={th}></th></tr></thead>
+            <tbody>{data?.items.map((r: CreditRate) => (
+              <RateRow key={r.id} rate={r} token={token} onChanged={reload} />
+            ))}</tbody>
+          </table>
+          {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No credit rates configured yet.</p>}
+        </div>
+      )}
     </div>
   );
 }
