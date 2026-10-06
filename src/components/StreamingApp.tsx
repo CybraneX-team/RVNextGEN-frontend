@@ -29,7 +29,7 @@ function closeMovie() {
   }
 }
 
-type Film = { id: string; title: string; genre: string; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean };
+type Film = { id: string; title: string; genre: string; genres: string[]; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean };
 const GENRE_BY_TYPE: Record<string, string> = { MOVIE: "Movie", SERIES: "Series", EPISODE: "Episode", SHORT: "Short" };
 // These shipped poster files are intentionally used ahead of database URLs so the catalogue
 // remains visible to every visitor, including when the API is running on a different host.
@@ -49,10 +49,15 @@ function builtInPoster(title: string) {
 }
 /** Maps a backend content item into the shape the existing UI renders. */
 function toFilm(c: ApiContent): Film {
+  const genres = c.categories.map(category => category.name);
+  const fallbackGenre = GENRE_BY_TYPE[c.type] ?? "Movie";
   return {
     id: c.id,
     title: c.title,
-    genre: c.categories[0]?.name ?? GENRE_BY_TYPE[c.type] ?? "Movie",
+    // Keep the first genre for backward-compatible headings, but retain the
+    // complete selection for filters and the title detail screen.
+    genre: genres[0] ?? fallbackGenre,
+    genres: genres.length ? genres : [fallbackGenre],
     year: (c.releaseDate ? new Date(c.releaseDate) : new Date(c.createdAt)).getFullYear().toString(),
     rating: c.rating != null ? c.rating.toFixed(1) : "",
     image: builtInPoster(c.title) ?? c.posterUrl ?? "",
@@ -291,7 +296,7 @@ function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }:
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [playing]);
   const recommendations = pool.filter(item => item.id !== film.id);
-  const similar = [...recommendations.filter(item => item.genre === film.genre), ...recommendations.filter(item => item.genre !== film.genre)].slice(0, 6);
+  const similar = [...recommendations.filter(item => item.genres.some(genre => film.genres.includes(genre))), ...recommendations.filter(item => !item.genres.some(genre => film.genres.includes(genre)))].slice(0, 6);
   const explore = [...recommendations].reverse().slice(0, 6);
   const cast = castByFilm[film.id];
   return <main className="relative isolate min-h-screen overflow-hidden bg-[#0e0d0f] pb-1 text-white">
@@ -314,9 +319,9 @@ function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }:
         <h1 ref={heading} tabIndex={-1} className="mt-[22px] text-[26px] leading-8 font-medium tracking-[-.04em] outline-none lg:text-[48px] lg:leading-[1.1]">{film.title}</h1>
         {film.tagline && <p className="mt-2 text-[15px] text-white/45 italic">{film.tagline}</p>}
         <p className="mt-[10px] max-w-[370px] text-[14px] leading-5 font-normal tracking-[-.02em] text-white/55 lg:max-w-[470px] lg:text-[16px] lg:leading-6">{film.description}</p>
-        <p className="mt-9 text-[14px] leading-5 text-white/55">{film.genre}</p>
+        <p className="mt-9 text-[14px] leading-5 text-white/55">{film.genres.join(" · ")}</p>
         <div aria-label={cast ? "Cast" : "Title information"} className="mt-4 flex max-w-[345px] flex-wrap gap-2 lg:max-w-none">
-          {(cast || [film.year, film.genre, ...(film.rating ? [`★ ${film.rating}`] : [])]).map(label => <span key={label} className="rounded-full bg-white/8 px-[13px] py-[7px] text-[14px] leading-[18px] tracking-[-.02em] text-white/65">{label}</span>)}
+          {(cast || [film.year, ...film.genres, ...(film.rating ? [`★ ${film.rating}`] : [])]).map(label => <span key={label} className="rounded-full bg-white/8 px-[13px] py-[7px] text-[14px] leading-[18px] tracking-[-.02em] text-white/65">{label}</span>)}
         </div>
       </div>
     </section>
@@ -374,7 +379,7 @@ export default function StreamingApp() {
 
   const browseScroll = useRef(0);
   const carousel = useRef<HTMLDivElement>(null);
-  const featured = (genre === "All" ? (featuredFilms.length ? featuredFilms : films) : films.filter(f => f.genre === genre)).slice(0, 6);
+  const featured = (genre === "All" ? (featuredFilms.length ? featuredFilms : films) : films.filter(f => f.genres.includes(genre))).slice(0, 6);
   const current = featured[Math.min(hero, Math.max(featured.length - 1, 0))];
   const landscape = [...films].reverse().slice(0, 8);
 
@@ -514,7 +519,7 @@ export default function StreamingApp() {
           <div className="relative z-[2] w-[62%] max-w-[630px] px-[38px] py-[47px] min-[1450px]:px-12 min-[1450px]:py-[55px]">
             <FeatureLabel><span className="size-[5px] rounded-full bg-[#abc7b9]" />IN THE SPOTLIGHT</FeatureLabel>
             <h1 className="mt-[23px] mb-[18px] text-[60px] leading-[1.02] font-bold tracking-[-2.8px] min-[1450px]:text-[70px]">{current.title}</h1>
-            <div className="flex items-center gap-[14px] text-[11px] text-[#bdc8c1]"><span>{current.genre}</span><span>{current.year}</span><span className="rounded-[3px] border border-[#81958a70] px-[5px] py-px text-[9px]">16+</span><span className="text-[#e1b671]">★ <b className="font-normal text-[#d4dcd7]">{current.rating}</b></span></div>
+            <div className="flex items-center gap-[14px] text-[11px] text-[#bdc8c1]"><span>{current.genres.join(" · ")}</span><span>{current.year}</span><span className="rounded-[3px] border border-[#81958a70] px-[5px] py-px text-[9px]">16+</span><span className="text-[#e1b671]">★ <b className="font-normal text-[#d4dcd7]">{current.rating}</b></span></div>
             <p className="mt-[17px] mb-6 max-w-[335px] text-[12px] leading-[1.85] text-[#9cb0a4] min-[1450px]:max-w-[390px] min-[1450px]:text-[13px]">{current.description}</p>
             <div className="flex gap-[11px]"><ActionButton onClick={() => open(current)}><PlayIcon />Watch now</ActionButton><ActionButton secondary onClick={() => toggleSave(current)}><span className="text-[24px] font-light">{saved.includes(current.id) ? "✓" : "+"}</span>{saved.includes(current.id) ? "In my list" : "My list"}</ActionButton></div>
           </div>
@@ -541,9 +546,9 @@ export default function StreamingApp() {
             })}
           </div>
           <h1 className="mt-[18px] mb-1 text-center text-[16px] leading-[19px] font-medium tracking-[-.04em] text-white">{current.title}</h1>
-          <div className="flex justify-center gap-[6px] text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">{current.genre}{current.rating && <span>{current.rating} <b className="font-normal text-[#ffc346]">★</b></span>}</div>
+          <div className="flex justify-center gap-[6px] text-[14px] leading-4 font-normal tracking-[-.04em] text-white/50">{current.genres.join(" · ")}{current.rating && <span>{current.rating} <b className="font-normal text-[#ffc346]">★</b></span>}</div>
         </section>}
-        <FilmRow title="New Releases" first items={genre === "All" ? films.slice(0, 12) : films.filter(f => f.genre === genre)} onSelect={open} />
+        <FilmRow title="New Releases" first items={genre === "All" ? films.slice(0, 12) : films.filter(f => f.genres.includes(genre))} onSelect={open} />
         <FilmRow title="Top Rated" items={[...films].sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0)).slice(0, 10)} onSelect={open} />
         {landscape.length > 0 && <section className="mb-16 flex flex-col gap-[18px] lg:mb-[33px]">
           <SectionHeading title="Keep Exploring" />

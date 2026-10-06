@@ -38,6 +38,7 @@ export type UpdateContentBody = {
   title?: string;
   description?: string;
   posterUrl?: string;
+  youtubeUrl?: string;
   rating?: number;
   tagline?: string;
   type?: ContentType;
@@ -52,6 +53,10 @@ export const uploadPoster = (file: File, token: string) => {
   form.append("file", file);
   return apiFetch<{ url: string }>("content/poster-upload", { method: "POST", body: form, token });
 };
+
+export type Genre = { id: string; name: string; slug: string };
+export const createGenre = (name: string, token: string) =>
+  apiFetch<Genre>("content/categories", { method: "POST", body: { name }, token });
 
 // --- Dashboard reads ---
 export type Overview = {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useAuth } from "../AuthProvider";
-import { createYoutube, youtubePreview, type YoutubePreview } from "@/lib/admin";
+import { createYoutube, uploadPoster, youtubePreview, type YoutubePreview } from "@/lib/admin";
 import type { ContentType } from "@/lib/content";
 import GenrePicker from "./GenrePicker";
 
@@ -21,7 +21,9 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [busy, setBusy] = useState<false | "fetch" | "save">(false);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
+  const posterInput = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Fields>(key: K, value: Fields[K]) => setFields((f) => ({ ...f, [key]: value }));
 
   async function fetchMeta(event: FormEvent) {
@@ -65,6 +67,21 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
     }
   }
 
+  async function choosePoster(file?: File) {
+    if (!file || !accessToken || uploadingPoster) return;
+    if (!file.type.startsWith("image/")) { setNotice({ tone: "error", text: "Choose an image file." }); return; }
+    if (file.size > 5 * 1024 * 1024) { setNotice({ tone: "error", text: "Image must be 5 MB or smaller." }); return; }
+    setUploadingPoster(true); setNotice(null);
+    try {
+      const { url: uploadedUrl } = await uploadPoster(file, accessToken);
+      set("posterUrl", uploadedUrl);
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "Could not upload the image." });
+    } finally {
+      setUploadingPoster(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <h2 className="text-[20px] font-semibold text-white">Add a YouTube video</h2>
@@ -80,6 +97,8 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
           <div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={fields.posterUrl || preview.posterUrl} alt="" className="aspect-video w-full rounded-lg object-cover" referrerPolicy="no-referrer" />
+            <input ref={posterInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => { void choosePoster(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+            <button type="button" onClick={() => posterInput.current?.click()} disabled={uploadingPoster} className="mt-2 w-full rounded-md border border-white/15 px-3 py-2 text-[12px] font-medium text-white/75 hover:bg-white/5 disabled:cursor-wait disabled:opacity-50">{uploadingPoster ? "Uploading image…" : "Upload custom image"}</button>
             {preview.channel && <p className="mt-2 text-[12px] text-white/45">From {preview.channel}</p>}
             {preview.durationSecs != null && <p className="text-[12px] text-white/45">{Math.round(preview.durationSecs / 60)} min</p>}
           </div>
@@ -87,7 +106,7 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
             <div><span className={label}>Title</span><input className={input} value={fields.title} onChange={(e) => set("title", e.target.value)} maxLength={300} required /></div>
             <div><span className={label}>Tagline</span><input className={input} value={fields.tagline} onChange={(e) => set("tagline", e.target.value)} maxLength={300} placeholder="Optional one-liner" /></div>
             <div><span className={label}>Description</span><textarea className={`${input} h-24 resize-y py-2`} value={fields.description} onChange={(e) => set("description", e.target.value)} maxLength={5000} /></div>
-            <div><span className={label}>Thumbnail URL</span><input className={input} value={fields.posterUrl} onChange={(e) => set("posterUrl", e.target.value)} maxLength={2048} /></div>
+            <div><span className={label}>Thumbnail URL</span><input className={input} value={fields.posterUrl} onChange={(e) => set("posterUrl", e.target.value)} maxLength={2048} placeholder="Use the YouTube thumbnail, upload an image, or paste a URL" /></div>
             <div><span className={label}>Genre</span><GenrePicker value={categoryIds} onChange={setCategoryIds} /></div>
             <div className="grid grid-cols-3 gap-3">
               <div><span className={label}>Rating</span><input className={input} type="number" min={0} max={5} step={0.1} value={fields.rating} onChange={(e) => set("rating", e.target.value)} placeholder="0–5" /></div>
@@ -95,7 +114,7 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
               <div><span className={label}>Visibility</span><select className={input} value={fields.visibility} onChange={(e) => set("visibility", e.target.value as Fields["visibility"])}>{VISIBILITIES.map((v) => <option key={v} value={v} className="bg-[#14171a]">{v}</option>)}</select></div>
             </div>
             <div className="flex items-center gap-3">
-              <button type="submit" disabled={!!busy} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy === "save" ? "Saving…" : "Save video"}</button>
+              <button type="submit" disabled={!!busy || uploadingPoster} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy === "save" ? "Saving…" : "Save video"}</button>
               <button type="button" onClick={() => { setPreview(null); setFields(EMPTY); setCategoryIds([]); }} className="h-11 rounded-lg border border-white/12 px-4 text-[14px] text-white/70 hover:bg-white/5">Cancel</button>
             </div>
           </div>
@@ -104,7 +123,7 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
 
       {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 text-[13px] ${notice.tone === "error" ? "text-[#ff8f8f]" : "text-[#8fe3b4]"}`}>{notice.text}</p>}
 
-      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Cloudflare upload (direct file / series) is coming in a later step.</p>
+      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Custom poster images are stored in Cloudinary. Video playback remains on YouTube.</p>
     </div>
   );
 }

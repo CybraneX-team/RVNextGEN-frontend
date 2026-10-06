@@ -10,7 +10,7 @@ const label = "mb-1 block text-[12px] font-medium text-white/55";
 const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
 const VISIBILITIES = ["PUBLISHED", "DRAFT", "PRIVATE", "ARCHIVED"] as const;
 
-type Fields = { title: string; tagline: string; description: string; posterUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number] };
+type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number] };
 
 /** Edit an existing title: loads it, lets the admin change fields/genre/visibility, saves via PATCH. */
 export default function EditContentModal({ id, token, onClose, onSaved }: { id: string; token: string | null; onClose: () => void; onSaved: () => void }) {
@@ -29,7 +29,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     getContent(id, token).then((c) => {
       if (!live) return;
       setItem(c);
-      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]) });
+      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]) });
       setCategoryIds(c.categories.map((x) => x.id));
     }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Couldn’t load this title."); });
     return () => { live = false; };
@@ -50,6 +50,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
         tagline: fields.tagline.trim(),
         description: fields.description.trim(),
         posterUrl: fields.posterUrl.trim() || undefined,
+        youtubeUrl: fields.youtubeUrl.trim() || undefined,
         rating: fields.rating ? Number(fields.rating) : undefined,
         type: fields.type,
         visibility: fields.visibility,
@@ -100,6 +101,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
               <div><span className={label}>Title</span><input className={input} value={fields.title} onChange={(e) => set("title", e.target.value)} maxLength={300} /></div>
               <div><span className={label}>Tagline</span><input className={input} value={fields.tagline} onChange={(e) => set("tagline", e.target.value)} maxLength={300} /></div>
               <div><span className={label}>Description</span><textarea className={`${input} h-20 resize-y py-2`} value={fields.description} onChange={(e) => set("description", e.target.value)} maxLength={5000} /></div>
+              <div><span className={label}>YouTube URL</span><input className={input} type="url" value={fields.youtubeUrl} onChange={(e) => set("youtubeUrl", e.target.value)} maxLength={500} placeholder="Paste a new YouTube link to replace the video" /></div>
               <div><span className={label}>Thumbnail URL</span><input className={input} value={fields.posterUrl} onChange={(e) => set("posterUrl", e.target.value)} maxLength={2048} placeholder="Upload an image or paste a URL" /></div>
               <div><span className={label}>Genre</span><GenrePicker value={categoryIds} onChange={setCategoryIds} /></div>
               <div className="grid grid-cols-3 gap-3">
@@ -108,7 +110,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
                 <div><span className={label}>Visibility</span><select className={input} value={fields.visibility} onChange={(e) => set("visibility", e.target.value as Fields["visibility"])}>{VISIBILITIES.map((v) => <option key={v} value={v} className="bg-[#14171a]">{v}</option>)}</select></div>
               </div>
               <div className="flex items-center gap-3 pt-1">
-                <button type="button" onClick={save} disabled={busy} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "Saving…" : "Save changes"}</button>
+                <button type="button" onClick={save} disabled={busy || uploadingPoster} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "Saving…" : "Save changes"}</button>
                 <button type="button" onClick={onClose} className="h-11 rounded-lg border border-white/12 px-4 text-[14px] text-white/70 hover:bg-white/5">Cancel</button>
               </div>
             </div>
