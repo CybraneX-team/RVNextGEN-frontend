@@ -25,10 +25,10 @@ export type ModelOption = {
 const TEXT_MODELS: ModelOption[] = [
   { provider: "openai", model: "gpt-4o-mini", label: "OpenAI · GPT-4o mini", credits: 1 },
   { provider: "openai", model: "gpt-4o", label: "OpenAI · GPT-4o", credits: 5 },
-  { provider: "anthropic", model: "claude-3-5-haiku-latest", label: "Anthropic · Claude 3.5 Haiku", credits: 2 },
-  { provider: "anthropic", model: "claude-3-5-sonnet-latest", label: "Anthropic · Claude 3.5 Sonnet", credits: 6 },
-  { provider: "xai", model: "grok-2-latest", label: "xAI · Grok 2", credits: 3 },
-  { provider: "groq", model: "llama-3.1-8b-instant", label: "Groq · Llama 3.1 8B", credits: 1 },
+  { provider: "anthropic", model: "claude-haiku-4-5", label: "Anthropic · Claude Haiku 4.5", credits: 2 },
+  { provider: "anthropic", model: "claude-sonnet-4-5", label: "Anthropic · Claude Sonnet 4.5", credits: 6 },
+  { provider: "xai", model: "grok-3", label: "xAI · Grok 3", credits: 3 },
+  { provider: "groq", model: "openai/gpt-oss-20b", label: "Groq · GPT-OSS 20B", credits: 1 },
   { provider: "openrouter", model: "openai/gpt-4o-mini", label: "OpenRouter · GPT-4o mini", credits: 1 },
 ];
 
