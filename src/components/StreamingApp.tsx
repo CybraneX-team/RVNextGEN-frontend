@@ -500,7 +500,7 @@ export default function StreamingApp() {
         <div>Discover your next <span className="text-[#c4cec8]">great watch.</span></div>
         <div className="flex items-center gap-[23px]"><button className="bg-transparent text-[#c3cbc7]" aria-label="Search movies and shows" onClick={() => navigate("Search")}><SearchIcon className="size-5" /></button><span className="h-[19px] w-px bg-[#ffffff14]" /><button className="grid size-8 place-items-center overflow-hidden rounded-full bg-[#4f173d] text-[14px] font-semibold text-[#b7669b]" aria-label="Open profile" onClick={() => navigate("Profile")}><Avatar user={user} /></button></div>
       </header>
-      {page === "Gyro" ? <GyroPage /> : page === "Home" ? (loading ? (
+      {page === "Gyro" ? <GyroPage onClose={() => navigate("Home")} /> : page === "Home" ? (loading ? (
         <p className="px-[23px] py-20 text-center text-white/40 lg:px-0">Loading titles…</p>
       ) : loadError ? (
         <p role="alert" className="px-[23px] py-20 text-center text-[#ff8f8f] lg:px-0">{loadError}</p>

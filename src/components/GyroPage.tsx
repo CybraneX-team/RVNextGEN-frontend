@@ -1,20 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { PlayIcon } from "./icons";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 type Mode = "Parallax" | "3D Cinema";
 
-export default function GyroPage() {
+export default function GyroPage({ onClose }: { onClose?: () => void }) {
   const [mode, setMode] = useState<Mode>("Parallax");
   const [sensorOn, setSensorOn] = useState(false);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [sensorMessage, setSensorMessage] = useState("Enable gyro to look around");
-  const mounted = useRef(false);
-
   useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
   }, []);
 
   useEffect(() => {
@@ -49,20 +48,20 @@ export default function GyroPage() {
 
   const x = `${tilt.x}px`;
   const y = `${tilt.y}px`;
-  return <section className="min-h-[calc(100dvh-140px)] px-[23px] pt-[24px] pb-5 lg:px-0 lg:pt-10">
-    <div className="mx-auto max-w-[780px]">
-      <p className="mb-2 text-[10px] tracking-[2.2px] text-[#b9ccc4]">A NEW WAY TO WATCH</p>
-      <h1 className="mb-2 text-[30px] font-semibold tracking-[-1px] text-white lg:text-[38px]">Gyro</h1>
-      <p className="mb-6 max-w-[560px] text-[14px] leading-6 text-white/55">Step a little closer to the story. Tilt your phone and let the scene move with you.</p>
-
-      <div className="mb-5 grid grid-cols-2 gap-2 rounded-[16px] border border-white/10 bg-white/[0.035] p-1.5" role="tablist" aria-label="Gyro viewing mode">
-        {(["Parallax", "3D Cinema"] as Mode[]).map(option => <button key={option} role="tab" aria-selected={mode === option} onClick={() => setMode(option)} className={`rounded-[12px] px-3 py-3 text-left transition-colors ${mode === option ? "bg-[#dce9e2] text-[#10201a]" : "text-white/60 hover:bg-white/5 hover:text-white"}`}>
-          <span className="block text-[14px] font-semibold">{option}</span>
-          <span className={`mt-1 block text-[11px] ${mode === option ? "text-[#10201a]/65" : "text-white/40"}`}>{option === "Parallax" ? "Depth in the picture" : "Look around the story world"}</span>
-        </button>)}
+  const backClass = "grid size-11 shrink-0 place-items-center rounded-full border border-white/15 bg-black/25 text-white/90 backdrop-blur-xl hover:bg-black/40";
+  const backIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
+  return <section aria-label="Gyro immersive viewer" className="fixed inset-0 z-50 h-dvh w-full overflow-hidden bg-[#09100d] text-white" onPointerMove={event => {
+    if (sensorOn || event.pointerType !== "mouse") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setTilt({ x: ((event.clientX - bounds.left) / bounds.width - .5) * 28, y: ((event.clientY - bounds.top) / bounds.height - .5) * 20 });
+  }} onPointerLeave={() => { if (!sensorOn) setTilt({ x: 0, y: 0 }); }}>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 bg-gradient-to-b from-black/35 to-transparent px-4 pt-[max(16px,env(safe-area-inset-top))] pb-12 sm:px-6">
+        <div className="pointer-events-auto">{onClose ? <button type="button" onClick={onClose} className={backClass} aria-label="Close Gyro">{backIcon}</button> : <Link href="/" className={backClass} aria-label="Back to home">{backIcon}</Link>}</div>
+        <div className="pointer-events-auto flex rounded-full border border-white/15 bg-black/25 p-1 backdrop-blur-xl" role="group" aria-label="Viewing mode">
+          {(["Parallax", "3D Cinema"] as Mode[]).map(option => <button type="button" key={option} aria-pressed={mode === option} onClick={() => setMode(option)} className={`min-h-10 rounded-full px-4 text-[12px] font-medium transition-colors ${mode === option ? "bg-white/90 text-[#10201a]" : "text-white/70 hover:text-white"}`}>{option}</button>)}
+        </div>
       </div>
-
-      <div className="relative mx-auto aspect-[.88] w-full max-w-[560px] overflow-hidden rounded-[24px] border border-white/10 bg-[#13231f] shadow-[0_24px_90px_#0008] sm:aspect-[1.35]">
+      <div className="absolute inset-0 overflow-hidden">
         {mode === "Parallax" ? <div className="absolute inset-[-34px] overflow-hidden" style={{ perspective: "850px" }}>
           <div className="absolute inset-[-15px] bg-cover bg-center transition-transform duration-200 ease-out" style={{ backgroundImage: "linear-gradient(180deg,#07161122,#07161199),url('/art/yellowstone.svg')", transform: `translate3d(${-tilt.x * .55}px,${-tilt.y * .55}px,0) scale(1.08)` }} />
           <div className="absolute inset-0 transition-transform duration-200 ease-out" style={{ transform: `translate3d(${x},${y},0)` }}>
@@ -70,9 +69,6 @@ export default function GyroPage() {
             <div className="absolute inset-x-[-8%] bottom-[-9%] h-[34%] rounded-[50%_50%_0_0] bg-[radial-gradient(ellipse_at_50%_0%,#82906a_0%,#314334_42%,#101812_76%)]" />
           </div>
           <div className="absolute inset-0 bg-[linear-gradient(180deg,#07100caa_0%,transparent_36%,transparent_54%,#07100cbb_100%)]" />
-          <div className="absolute inset-x-5 top-5 flex items-center justify-between"><span className="rounded-full border border-white/15 bg-black/25 px-3 py-1.5 text-[10px] tracking-[1px] text-white/75 backdrop-blur-md">DEPTH PREVIEW</span><span className="rounded-full bg-black/25 px-3 py-1.5 text-[10px] text-white/65 backdrop-blur-md">Yellowstone · S2 EP 01</span></div>
-          <button type="button" aria-label="Play Yellowstone preview" className="absolute top-1/2 left-1/2 grid size-[58px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-white/15 text-white shadow-lg backdrop-blur-md"><PlayIcon className="size-5" /></button>
-          <div className="absolute inset-x-5 bottom-5"><p className="text-[10px] tracking-[1.7px] text-white/60">THE DUTTON RANCH</p><p className="mt-1 text-[21px] font-semibold tracking-[-.5px] text-white">A world with depth.</p></div>
         </div> : <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(ellipse_at_50%_58%,#b77b3c_0%,#624526_27%,#1d241c_64%,#09100d_100%)]" style={{ perspective: "900px" }}>
           <div className="absolute inset-[-12%] transition-transform duration-200 ease-out" style={{ transform: `translate3d(${-tilt.x}px,${-tilt.y}px,0) rotateY(${tilt.x * .08}deg)` }}>
             <div className="absolute inset-x-[-10%] bottom-0 h-[62%] bg-[linear-gradient(165deg,transparent_0_25%,#17241c_25.5%_55%,#090f0c_56%)]" />
@@ -84,16 +80,12 @@ export default function GyroPage() {
             <div className="absolute bottom-[5%] left-[35%] h-[13%] w-[30%] rounded-[50%] bg-[#090d0a] blur-xl" />
           </div>
           <div className="absolute inset-0 bg-[linear-gradient(180deg,#05080699,transparent_38%,#05080655)]" />
-          <div className="absolute inset-x-5 top-5 flex items-center justify-between"><span className="rounded-full border border-white/15 bg-black/25 px-3 py-1.5 text-[10px] tracking-[1px] text-white/75 backdrop-blur-md">STORY WORLD</span><span className="rounded-full bg-black/25 px-3 py-1.5 text-[10px] text-white/65 backdrop-blur-md">Private cinema</span></div>
-          <div className="absolute inset-x-5 bottom-5"><p className="text-[10px] tracking-[1.7px] text-white/60">YELLOWSTONE</p><p className="mt-1 text-[21px] font-semibold tracking-[-.5px] text-white">A cinema in the story.</p></div>
         </div>}
       </div>
 
-      <div className="mt-5 flex items-center gap-3">
-        <button type="button" onClick={() => void enableGyro()} className="inline-flex h-[46px] items-center justify-center gap-2 rounded-full bg-[#dce9e2] px-5 text-[13px] font-semibold text-[#10201a] transition hover:bg-white">{sensorOn ? "Gyro enabled" : "Enable gyro"}<span aria-hidden="true">↗</span></button>
-        <p aria-live="polite" className="text-[12px] text-white/45">{sensorMessage}</p>
+      <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-3 px-5 pt-12 pb-[max(24px,env(safe-area-inset-bottom))]">
+        <p aria-live="polite" className={sensorMessage === "Enable gyro to look around" || sensorOn ? "sr-only" : "max-w-[320px] rounded-xl bg-black/60 px-4 py-2 text-center text-[12px] text-white/80 backdrop-blur-xl"}>{sensorMessage}</p>
+        <button type="button" onClick={() => { if (sensorOn) { setSensorOn(false); setTilt({ x: 0, y: 0 }); setSensorMessage("Enable gyro to look around"); } else void enableGyro(); }} aria-pressed={sensorOn} className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-black/25 px-5 text-[12px] font-medium text-white/90 backdrop-blur-xl transition hover:bg-black/40"><span aria-hidden="true" className={`size-1.5 rounded-full ${sensorOn ? "bg-[#a2d9bf]" : "bg-white/40"}`} />{sensorOn ? "Gyro on" : "Enable gyro"}</button>
       </div>
-      <p className="mt-5 max-w-[650px] text-[11px] leading-5 text-white/35">Parallax is a layered preview. Full episode depth playback needs a matching depth video for each episode. 3D Cinema is a motion-reactive scene preview.</p>
-    </div>
   </section>;
 }
