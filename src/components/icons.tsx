@@ -28,6 +28,16 @@ export function LibraryIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function GyroIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="16" cy="16" r="10.5" />
+      <ellipse cx="16" cy="16" rx="4.5" ry="10.5" transform="rotate(45 16 16)" />
+      <circle cx="16" cy="16" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function PlayIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg width="17" height="18" viewBox="0 0 17 18" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>

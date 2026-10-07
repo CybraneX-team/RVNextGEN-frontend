@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
-import { ChevronRightIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
+import { ChevronRightIcon, GyroIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
+import GyroPage from "./GyroPage";
 import { getDeviceId } from "@/lib/device";
 import {
   addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
@@ -66,7 +67,7 @@ function toFilm(c: ApiContent): Film {
     real: true,
   };
 }
-const navigation = [{ name: "Home", icon: HomeIcon }, { name: "Search", icon: SearchIcon }, { name: "Library", icon: LibraryIcon }];
+const navigation = [{ name: "Home", icon: HomeIcon }, { name: "Search", icon: SearchIcon }, { name: "Library", icon: LibraryIcon }, { name: "Gyro", icon: GyroIcon }];
 
 function Art({ film, detail = false }: { film: Film; detail?: boolean }) {
   // Real catalog items carry a real thumbnail; render it in the same card frame (the bespoke
@@ -499,7 +500,7 @@ export default function StreamingApp() {
         <div>Discover your next <span className="text-[#c4cec8]">great watch.</span></div>
         <div className="flex items-center gap-[23px]"><button className="bg-transparent text-[#c3cbc7]" aria-label="Search movies and shows" onClick={() => navigate("Search")}><SearchIcon className="size-5" /></button><span className="h-[19px] w-px bg-[#ffffff14]" /><button className="grid size-8 place-items-center overflow-hidden rounded-full bg-[#4f173d] text-[14px] font-semibold text-[#b7669b]" aria-label="Open profile" onClick={() => navigate("Profile")}><Avatar user={user} /></button></div>
       </header>
-      {page === "Home" ? (loading ? (
+      {page === "Gyro" ? <GyroPage /> : page === "Home" ? (loading ? (
         <p className="px-[23px] py-20 text-center text-white/40 lg:px-0">Loading titles…</p>
       ) : loadError ? (
         <p role="alert" className="px-[23px] py-20 text-center text-[#ff8f8f] lg:px-0">{loadError}</p>
@@ -577,7 +578,7 @@ export default function StreamingApp() {
         {page === "Search" && !searching && query.trim() && results.length === 0 && <p className="py-[55px] text-center text-[#a1aba6]">No titles found. Try another title or genre.</p>}
       </section>}
     </main>
-    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>
+    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(10px,calc((100vw-300px)/4),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>
 
   </div>;
 }
