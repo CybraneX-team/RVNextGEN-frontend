@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import DesertParallax from "./DesertParallax";
 
 type Mode = "Parallax" | "3D Cinema";
 
@@ -57,8 +58,6 @@ export default function GyroPage({ onClose }: { onClose?: () => void }) {
     setPermissionRequired(false);
   }
 
-  const x = `${tilt.x}px`;
-  const y = `${tilt.y}px`;
   const backClass = "grid size-11 shrink-0 place-items-center rounded-full border border-white/15 bg-black/25 text-white/90 backdrop-blur-xl hover:bg-black/40";
   const backIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
   return <section aria-label="Gyro immersive viewer" className="fixed inset-0 z-50 h-dvh w-full overflow-hidden bg-[#09100d] text-white" onPointerMove={event => {
@@ -73,14 +72,7 @@ export default function GyroPage({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
       <div className="absolute inset-0 overflow-hidden">
-        {mode === "Parallax" ? <div className="absolute inset-[-52px] overflow-hidden" style={{ perspective: "850px" }}>
-          <div className="absolute inset-[-32px] bg-cover bg-center transition-transform duration-200 ease-out" style={{ backgroundImage: "linear-gradient(180deg,#07161122,#07161199),url('/art/yellowstone.svg')", transform: `translate3d(${-tilt.x * .8}px,${-tilt.y * .8}px,0) scale(1.08)` }} />
-          <div className="absolute inset-0 transition-transform duration-200 ease-out" style={{ transform: `translate3d(${x},${y},0)` }}>
-            <svg viewBox="0 0 600 420" preserveAspectRatio="xMidYMax slice" className="absolute inset-x-[-5%] bottom-[-2%] h-[66%] w-[110%] drop-shadow-[0_16px_20px_#0008]" aria-hidden="true"><path fill="#203b32" d="M0 228 92 100l65 84 86-140 109 164 73-98 175 132v178H0Z"/><path fill="#31483a" d="m0 274 114-93 88 57 91-86 83 97 95-58 129 85v104H0Z"/><path fill="#10231d" d="M0 330 135 252l75 40 122-67 82 68 104-62 82 78v51H0Z"/></svg>
-            <div className="absolute inset-x-[-8%] bottom-[-9%] h-[34%] rounded-[50%_50%_0_0] bg-[radial-gradient(ellipse_at_50%_0%,#82906a_0%,#314334_42%,#101812_76%)]" />
-          </div>
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,#07100caa_0%,transparent_36%,transparent_54%,#07100cbb_100%)]" />
-        </div> : <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(ellipse_at_50%_58%,#b77b3c_0%,#624526_27%,#1d241c_64%,#09100d_100%)]" style={{ perspective: "900px" }}>
+        {mode === "Parallax" ? <DesertParallax tilt={tilt} /> : <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(ellipse_at_50%_58%,#b77b3c_0%,#624526_27%,#1d241c_64%,#09100d_100%)]" style={{ perspective: "900px" }}>
           <div className="absolute inset-[-20%] transition-transform duration-200 ease-out" style={{ transform: `translate3d(${-tilt.x * 1.25}px,${-tilt.y * 1.25}px,0) rotateY(${tilt.x * .22}deg) rotateX(${-tilt.y * .16}deg)` }}>
             <div className="absolute inset-x-[-10%] bottom-0 h-[62%] bg-[linear-gradient(165deg,transparent_0_25%,#17241c_25.5%_55%,#090f0c_56%)]" />
             <div className="absolute bottom-[17%] left-[11%] h-[36%] w-[78%] border border-[#d3a76b55] bg-[linear-gradient(90deg,#30271f,#5b4229_48%,#29231d)] shadow-[0_20px_80px_#0009]" style={{ transform: "rotateY(-8deg) rotateX(2deg)" }}>
@@ -94,7 +86,7 @@ export default function GyroPage({ onClose }: { onClose?: () => void }) {
         </div>}
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-3 px-5 pt-12 pb-[max(24px,env(safe-area-inset-bottom))]">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-3 px-5 pt-12 pb-[max(24px,env(safe-area-inset-bottom))] [&_button]:pointer-events-auto">
         <p aria-live="polite" className={sensorMessage ? "max-w-[320px] rounded-xl bg-black/60 px-4 py-2 text-center text-[12px] text-white/80 backdrop-blur-xl" : "sr-only"}>{sensorMessage}</p>
         {permissionRequired && <button type="button" onClick={() => void enableGyro()} className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-black/25 px-5 text-[12px] font-medium text-white/90 backdrop-blur-xl transition hover:bg-black/40">Allow motion access</button>}
       </div>
