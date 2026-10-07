@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import LocomotiveScroll from "locomotive-scroll";
 import { PlayIcon } from "./icons";
 
 function phase(value: number, start: number, end: number) {
@@ -10,33 +11,33 @@ function phase(value: number, start: number, end: number) {
 
 export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y: number }; onPlay?: () => void }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const scrollContent = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
     const element = scroller.current;
-    if (!element) return;
+    const content = scrollContent.current;
+    if (!element || !content) return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePreference = () => setReducedMotion(preference.matches);
-    let frame = 0;
-    const update = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const distance = element.scrollHeight - element.clientHeight;
-        setProgress(distance > 0 ? Math.min(1, element.scrollTop / distance) : 0);
-      });
-    };
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    preference.addEventListener("change", updatePreference);
-    element.addEventListener("scroll", update, { passive: true });
     updatePreference();
-    update();
+    preference.addEventListener("change", updatePreference);
+    const locomotive = new LocomotiveScroll({
+      lenisOptions: {
+        wrapper: element,
+        content,
+        orientation: "vertical",
+        gestureOrientation: "vertical",
+        lerp: preference.matches ? 1 : .12,
+        smoothWheel: !preference.matches,
+        touchMultiplier: 1.4,
+      },
+      scrollCallback: ({ progress: scrollProgress }) => setProgress(scrollProgress),
+    });
     return () => {
-      observer.disconnect();
+      locomotive.destroy();
       preference.removeEventListener("change", updatePreference);
-      element.removeEventListener("scroll", update);
-      cancelAnimationFrame(frame);
     };
   }, []);
 
@@ -48,7 +49,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   const drift = (1 - card * .65) * motion;
 
   return <div ref={scroller} tabIndex={0} aria-label="Desert parallax. Scroll to reveal the episode card." className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div className="relative h-[500dvh]">
+    <div ref={scrollContent} className="relative h-[500dvh]">
       <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)]" style={{ opacity: card }} />
         <article aria-label="Episode 01" className="relative shrink-0 overflow-hidden bg-[#53331f]" style={{
@@ -63,7 +64,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
             transform: `translate3d(${-tilt.x * .7 * drift}px,${-tilt.y * .7 * drift}px,0) scale(${1.06 + focus * .24 * motion})`,
             filter: `blur(${focus * 13 * motion}px)`,
           }} />
-          <div aria-hidden="true" className="absolute top-20 scale-90 inset-[-50px] origin-bottom bg-cover bg-[position:10%_bottom] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out sm:bg-[position:center_bottom]" style={{
+          <div aria-hidden="true" className="absolute inset-[-50px] scale-80 origin-bottom bg-cover bg-[position:10%_bottom] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out sm:bg-[position:center_bottom]" style={{
             backgroundImage: "url('/images/foreground-dune.png')",
             transform: `translate3d(${tilt.x * 1.25 * drift}px,${tilt.y * drift + focus * 28 * motion}px,0) scale(${1.04 + focus * .07 * motion})`,
           }} />
