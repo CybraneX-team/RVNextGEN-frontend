@@ -49,7 +49,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   const drift = (1 - card * .65) * motion;
 
   return <div ref={scroller} tabIndex={0} aria-label="Desert parallax. Scroll to reveal the episode card." className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div ref={scrollContent} className="relative h-[500dvh]">
+    <div ref={scrollContent} className="relative h-[650dvh]">
       <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)]" style={{ opacity: card }} />
         <article aria-label="Episode 01" className="relative shrink-0 overflow-hidden bg-[#53331f]" style={{
