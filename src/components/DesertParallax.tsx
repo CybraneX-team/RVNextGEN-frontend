@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LocomotiveScroll from "locomotive-scroll";
 import { PlayIcon } from "./icons";
 
 function phase(value: number, start: number, end: number) {
@@ -25,24 +24,23 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
     const updatePreference = () => setReducedMotion(preference.matches);
     updatePreference();
     preference.addEventListener("change", updatePreference);
-    const locomotive = new LocomotiveScroll({
-      lenisOptions: {
-        wrapper: element,
-        content,
-        orientation: "vertical",
-        gestureOrientation: "vertical",
-        lerp: preference.matches ? 1 : .12,
-        smoothWheel: !preference.matches,
-        touchMultiplier: 1.4,
-      },
-      scrollCallback: ({ scroll }) => {
+    let frame = 0;
+    const update = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
         const track = parallaxTrack.current;
         const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight) : 1;
-        setProgress(Math.min(1, Math.max(0, scroll / travel)));
-      },
-    });
+        setProgress(Math.min(1, Math.max(0, element.scrollTop / travel)));
+      });
+    };
+    element.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    update();
     return () => {
-      locomotive.destroy();
+      element.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      cancelAnimationFrame(frame);
       preference.removeEventListener("change", updatePreference);
     };
   }, []);
@@ -67,7 +65,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
             borderRadius: `${24 * card}px`,
             containerType: "inline-size",
             boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`,
-            transform: `translateY(${-featuredLift * 14}dvh) scale(${1 - featuredLift * .34})`,
+            transform: `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .38})`,
           }}>
             <div aria-hidden="true" className="absolute inset-[-48px] bg-cover bg-[position:58%_center] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out" style={{
               backgroundImage: "url('/images/distant-desert.png')",
