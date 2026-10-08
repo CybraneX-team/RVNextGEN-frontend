@@ -16,6 +16,26 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
   const [episodesExpanded, setEpisodesExpanded] = useState(false);
+  const [cardRevealed, setCardRevealed] = useState(false);
+  const [card, setCard] = useState(0);
+  const cardValue = useRef(0);
+
+  useEffect(() => {
+    const from = cardValue.current;
+    const target = cardRevealed ? 1 : 0;
+    let frame = 0;
+    let started: number | undefined;
+    const animate = (time: number) => {
+      started ??= time;
+      const elapsed = reducedMotion ? 1 : Math.min(1, (time - started) / 850);
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      cardValue.current = from + (target - from) * eased;
+      setCard(cardValue.current);
+      if (elapsed < 1) frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [cardRevealed, reducedMotion]);
 
   useEffect(() => {
     const element = scroller.current;
@@ -34,7 +54,10 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
         // Preserve the full-card pause, then use a small gesture to trigger
         // a complete timed transition instead of scrubbing it with scroll.
         const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight - 48) : 1;
-        setProgress(Math.min(1, Math.max(0, element.scrollTop / travel * .84)));
+        const nextProgress = Math.min(1, Math.max(0, element.scrollTop / travel * .84));
+        setProgress(nextProgress);
+        if (nextProgress >= .52) setCardRevealed(true);
+        else if (nextProgress <= .5) setCardRevealed(false);
         if (element.scrollTop >= travel + 8) setEpisodesExpanded(true);
         else if (element.scrollTop <= travel - 24) setEpisodesExpanded(false);
       });
@@ -51,10 +74,9 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   }, []);
 
   const focus = phase(progress, .04, .55);
-  const card = phase(progress, .52, .78);
-  const caption = phase(progress, .64, .78);
+  const caption = phase(card, .5, 1);
   const titleReveal = phase(progress, .06, .3);
-  const featuredLift = episodesExpanded ? 1 : 0;
+  const featuredLift = episodesExpanded && card >= .999 ? 1 : 0;
   const carouselReveal = featuredLift;
   const motion = reducedMotion ? 0 : 1;
   const drift = (1 - card * .65) * motion;
@@ -98,7 +120,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: 1 - phase(progress, 0, .12) }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div role="region" aria-label="More episodes" aria-hidden={!episodesExpanded} inert={!episodesExpanded} className="absolute inset-x-0 bottom-[max(7dvh,calc(env(safe-area-inset-bottom)+24px))] z-10 transition-[transform,opacity] duration-[850ms] ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: episodesExpanded ? "auto" : "none" }}>
+          <div role="region" aria-label="More episodes" aria-hidden={!featuredLift} inert={!featuredLift} className="absolute inset-x-0 bottom-[max(7dvh,calc(env(safe-area-inset-bottom)+24px))] z-10 transition-[transform,opacity] duration-[850ms] ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
               <h3 className="mb-3 px-8 text-[13px] font-semibold tracking-[.04em] text-white/85">More episodes</h3>
               <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
