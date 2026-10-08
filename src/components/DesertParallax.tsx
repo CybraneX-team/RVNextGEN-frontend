@@ -15,6 +15,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   const [progress, setProgress] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
+  const [episodesExpanded, setEpisodesExpanded] = useState(false);
 
   useEffect(() => {
     const element = scroller.current;
@@ -30,8 +31,12 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
       frame = requestAnimationFrame(() => {
         frame = 0;
         const track = parallaxTrack.current;
-        const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight) : 1;
-        setProgress(Math.min(1, Math.max(0, element.scrollTop / travel)));
+        // Preserve the full-card pause, then use a small gesture to trigger
+        // a complete timed transition instead of scrubbing it with scroll.
+        const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight - 48) : 1;
+        setProgress(Math.min(1, Math.max(0, element.scrollTop / travel * .84)));
+        if (element.scrollTop >= travel + 8) setEpisodesExpanded(true);
+        else if (element.scrollTop <= travel - 24) setEpisodesExpanded(false);
       });
     };
     element.addEventListener("scroll", update, { passive: true });
@@ -49,17 +54,17 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
   const card = phase(progress, .52, .78);
   const caption = phase(progress, .64, .78);
   const titleReveal = phase(progress, .06, .3);
-  const featuredLift = phase(progress, .88, .98);
+  const featuredLift = episodesExpanded ? 1 : 0;
   const carouselReveal = featuredLift;
   const motion = reducedMotion ? 0 : 1;
   const drift = (1 - card * .65) * motion;
 
   return <div ref={scroller} tabIndex={0} aria-label="Desert parallax followed by episodes. Scroll to reveal the episode card and episode list." className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
     <div ref={scrollContent}>
-      <div ref={parallaxTrack} className="relative h-[850dvh]">
+      <div ref={parallaxTrack} className="relative h-[calc(814dvh+48px)]">
         <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)]" style={{ opacity: card }} />
-          <article aria-label="Episode 01" className="relative shrink-0 overflow-hidden bg-[#53331f]" style={{
+          <article aria-label="Episode 01" className="relative shrink-0 overflow-hidden bg-[#53331f] transition-transform duration-[850ms] ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{
             width: `calc(${100 * (1 - card)}% + min(${80 * card}vw, ${360 * card}px, ${39.375 * card}dvh))`,
             height: `calc(${100 * (1 - card)}% + min(${(80 * 16 / 9) * card}vw, ${640 * card}px, ${70 * card}dvh))`,
             borderRadius: `${24 * card}px`,
@@ -93,7 +98,7 @@ export default function DesertParallax({ tilt, onPlay }: { tilt: { x: number; y:
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: 1 - phase(progress, 0, .12) }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div role="region" aria-label="More episodes" className="absolute inset-x-0 bottom-[max(7dvh,calc(env(safe-area-inset-bottom)+24px))] z-10" style={{ opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 64}px)`, pointerEvents: carouselReveal > .99 ? "auto" : "none" }}>
+          <div role="region" aria-label="More episodes" aria-hidden={!episodesExpanded} inert={!episodesExpanded} className="absolute inset-x-0 bottom-[max(7dvh,calc(env(safe-area-inset-bottom)+24px))] z-10 transition-[transform,opacity] duration-[850ms] ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: episodesExpanded ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
               <h3 className="mb-3 px-8 text-[13px] font-semibold tracking-[.04em] text-white/85">More episodes</h3>
               <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
