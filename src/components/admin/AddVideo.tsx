@@ -123,7 +123,7 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
 
       {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 text-[13px] ${notice.tone === "error" ? "text-[#ff8f8f]" : "text-[#8fe3b4]"}`}>{notice.text}</p>}
 
-      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Custom poster images are stored in Cloudinary. Video playback remains on YouTube.</p>
+      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Custom poster images are stored on Cloudflare R2 (Cloudinary is the fallback). Video playback remains on YouTube.</p>
     </div>
   );
 }

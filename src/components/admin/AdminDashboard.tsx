@@ -8,10 +8,11 @@ import {
   type AdminUpload, type AdminUser, type CreditRate, type Overview,
 } from "@/lib/admin";
 import AddVideo from "./AddVideo";
+import CloudflareUpload from "./CloudflareUpload";
 import EditContentModal from "./EditContentModal";
 import GrantCreditsDialog from "./GrantCreditsDialog";
 
-const TABS = ["Overview", "Users", "Content", "Cost", "Add video"] as const;
+const TABS = ["Overview", "Users", "Content", "Cost", "Add YouTube", "Add Cloudflare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads `fn` once per token/dependency change; returns {data, error, loading, reload}. */
@@ -257,7 +258,8 @@ export default function AdminDashboard() {
           : tab === "Users" ? <UsersPanel token={accessToken} />
           : tab === "Content" ? <ContentPanel token={accessToken} />
           : tab === "Cost" ? <CostPanel token={accessToken} />
-          : <AddVideo />}
+          : tab === "Add YouTube" ? <AddVideo />
+          : <CloudflareUpload />}
       </main>
     </div>
   );

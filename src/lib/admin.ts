@@ -33,6 +33,42 @@ export type CreateYoutubeBody = {
 export const createYoutube = (body: CreateYoutubeBody, token: string) =>
   apiFetch<ApiContent>("content/youtube", { method: "POST", body, token });
 
+// --- Cloudflare Stream ingest ---
+export type CreateCloudflareBody = {
+  title: string;
+  description?: string;
+  posterUrl?: string;
+  rating?: number;
+  tagline?: string;
+  type?: ContentType;
+  isPremium?: boolean;
+  /** A remote HTTPS video URL copied into Stream server-side. Omit to upload a file instead. */
+  sourceUrl?: string;
+  categoryIds?: string[];
+};
+export const createCloudflare = (body: CreateCloudflareBody, token: string) =>
+  apiFetch<ApiContent>("content/cloudflare", { method: "POST", body, token });
+
+/** Request a one-time Cloudflare direct-upload URL for a draft, to upload a video file to. */
+export const createUploadUrl = (contentId: string, token: string, name?: string) =>
+  apiFetch<{ uploadUrl: string; expiresAt: string; contentId: string }>(
+    `video/content/${contentId}/upload-url`,
+    { method: "POST", body: { name }, token },
+  );
+
+export type StreamUrls = { uid: string; iframe: string; hls: string; dash: string };
+export type VideoStatus = { ready: boolean; state: string; errorCode: string | null; urls: StreamUrls | null };
+export const videoStatus = (contentId: string, token: string) =>
+  apiFetch<VideoStatus>(`video/content/${contentId}/status`, { token });
+
+/** Upload a video file directly to Cloudflare's one-time upload URL (browser → Cloudflare). */
+export async function uploadVideoFile(uploadUrl: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(uploadUrl, { method: "POST", body: form });
+  if (!res.ok) throw new Error("Cloudflare rejected the upload. Try again.");
+}
+
 // --- Edit existing content ---
 export type UpdateContentBody = {
   title?: string;
