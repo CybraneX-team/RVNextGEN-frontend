@@ -19,6 +19,7 @@ export type ApiContent = {
   releaseDate: string | null;
   createdAt: string;
   seriesId: string | null;
+  seasonNumber: number | null;
   episodeNumber: number | null;
   source: VideoSource;
   youtubeId: string | null;

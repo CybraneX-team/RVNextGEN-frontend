@@ -7,12 +7,15 @@ import {
   adminCreditRates, adminOverview, adminUploads, adminUsers, createCreditRate, updateCreditRate,
   type AdminUpload, type AdminUser, type CreditRate, type Overview,
 } from "@/lib/admin";
+import { deleteContent } from "@/lib/admin";
 import AddVideo from "./AddVideo";
 import CloudflareUpload from "./CloudflareUpload";
 import EditContentModal from "./EditContentModal";
+import GenresPanel from "./GenresPanel";
+import SeriesBuilder from "./SeriesBuilder";
 import GrantCreditsDialog from "./GrantCreditsDialog";
 
-const TABS = ["Overview", "Users", "Content", "Cost", "Add YouTube", "Add Cloudflare"] as const;
+const TABS = ["Overview", "Users", "Content", "Series", "Genres", "Cost", "Add YouTube", "Add Cloudflare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads `fn` once per token/dependency change; returns {data, error, loading, reload}. */
@@ -81,6 +84,24 @@ function UsersPanel({ token }: { token: string }) {
   );
 }
 
+/** Two-click delete for a title: first click arms, second confirms. */
+function DeleteTitleButton({ id, title, token, onDeleted }: { id: string; title: string; token: string; onDeleted: () => void }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function remove() {
+    setBusy(true);
+    try { await deleteContent(id, token); onDeleted(); }
+    catch { setBusy(false); setArmed(false); }
+  }
+  if (!armed) return <button onClick={() => setArmed(true)} title={`Delete “${title}”`} className="rounded-md border border-[#8f2f2f]/50 px-3 py-1 text-[12px] text-[#ff9f9f] hover:bg-[#8f2f2f]/20">Delete</button>;
+  return (
+    <span className="inline-flex gap-1.5">
+      <button onClick={remove} disabled={busy} className="rounded-md bg-[#8f2f2f] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#7a2929] disabled:opacity-50">{busy ? "…" : "Confirm"}</button>
+      <button onClick={() => setArmed(false)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button>
+    </span>
+  );
+}
+
 function ContentPanel({ token }: { token: string }) {
   const [q, setQ] = useState("");
   const { data, error, loading, reload } = useAsync((tok) => adminUploads(tok, q || undefined), token, [q]);
@@ -99,7 +120,7 @@ function ContentPanel({ token }: { token: string }) {
                 <td className={td}>{c.visibility}</td>
                 <td className={td}>{c.videoSource === "YOUTUBE" ? "—" : c.streamReady == null ? "—" : c.streamReady ? "Yes" : "No"}</td>
                 <td className={td}>{c.creator?.email ?? "—"}</td>
-                <td className={td}><button onClick={() => setEditId(c.id)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
+                <td className={td}><div className="flex gap-1.5"><button onClick={() => setEditId(c.id)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button><DeleteTitleButton id={c.id} title={c.title} token={token} onDeleted={reload} /></div></td>
               </tr>
             ))}</tbody>
           </table>
@@ -257,6 +278,8 @@ export default function AdminDashboard() {
         {!accessToken ? <Loading /> : tab === "Overview" ? <OverviewPanel token={accessToken} />
           : tab === "Users" ? <UsersPanel token={accessToken} />
           : tab === "Content" ? <ContentPanel token={accessToken} />
+          : tab === "Series" ? <SeriesBuilder token={accessToken} />
+          : tab === "Genres" ? <GenresPanel token={accessToken} />
           : tab === "Cost" ? <CostPanel token={accessToken} />
           : tab === "Add YouTube" ? <AddVideo />
           : <CloudflareUpload />}

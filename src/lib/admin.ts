@@ -29,6 +29,9 @@ export type CreateYoutubeBody = {
   visibility?: "DRAFT" | "PRIVATE" | "PUBLISHED" | "ARCHIVED";
   durationSecs?: number;
   categoryIds?: string[];
+  seriesId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
 };
 export const createYoutube = (body: CreateYoutubeBody, token: string) =>
   apiFetch<ApiContent>("content/youtube", { method: "POST", body, token });
@@ -45,6 +48,9 @@ export type CreateCloudflareBody = {
   /** A remote HTTPS video URL copied into Stream server-side. Omit to upload a file instead. */
   sourceUrl?: string;
   categoryIds?: string[];
+  seriesId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
 };
 export const createCloudflare = (body: CreateCloudflareBody, token: string) =>
   apiFetch<ApiContent>("content/cloudflare", { method: "POST", body, token });
@@ -93,6 +99,32 @@ export const uploadPoster = (file: File, token: string) => {
 export type Genre = { id: string; name: string; slug: string };
 export const createGenre = (name: string, token: string) =>
   apiFetch<Genre>("content/categories", { method: "POST", body: { name }, token });
+
+// --- Genre management (admin CRUD) ---
+export type AdminGenre = Genre & { contentCount: number };
+export const listGenres = (token: string) =>
+  apiFetch<AdminGenre[]>("content/categories", { token });
+export const renameGenre = (id: string, name: string, token: string) =>
+  apiFetch<Genre>(`content/categories/${id}`, { method: "PATCH", body: { name }, token });
+export const deleteGenre = (id: string, token: string) =>
+  apiFetch<void>(`content/categories/${id}`, { method: "DELETE", token });
+
+// --- Delete a title (soft delete; a series also removes its episodes) ---
+export const deleteContent = (id: string, token: string) =>
+  apiFetch<void>(`content/${id}`, { method: "DELETE", token });
+
+// --- Series builder (seasons → episodes) ---
+export type AdminSeries = { id: string; title: string; posterUrl: string | null; visibility: string; createdAt: string; episodeCount: number };
+export const listSeriesAdmin = (token: string) =>
+  apiFetch<AdminSeries[]>("content/series", { token });
+
+export type CreateSeriesBody = { title: string; description?: string; posterUrl?: string; rating?: number; tagline?: string; categoryIds?: string[] };
+export const createSeries = (body: CreateSeriesBody, token: string) =>
+  apiFetch<ApiContent>("content/series", { method: "POST", body, token });
+
+export type SeriesTree = { series: ApiContent; seasons: { seasonNumber: number; episodes: ApiContent[] }[] };
+export const seriesEpisodes = (seriesId: string, token: string) =>
+  apiFetch<SeriesTree>(`content/${seriesId}/episodes`, { token });
 
 // --- Dashboard reads ---
 export type Overview = {
