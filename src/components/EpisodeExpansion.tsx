@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 export type EpisodeSelection = { episode: number; origin: HTMLElement };
 
 /** Keep the original scene mounted while the selected card fills the viewport. */
-export default function EpisodeExpansion({ selection, onClose }: { selection: EpisodeSelection; onClose: () => void }) {
+export default function EpisodeExpansion({ selection, seriesTitle, onClose }: { selection: EpisodeSelection; seriesTitle: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const artwork = useRef<HTMLDivElement>(null);
   const backdrop = useRef<HTMLDivElement>(null);
@@ -85,7 +85,7 @@ export default function EpisodeExpansion({ selection, onClose }: { selection: Ep
     };
   }, [selection, onClose]);
 
-  return <dialog ref={dialog} aria-label={`Episode ${String(selection.episode).padStart(2, "0")}`} onCancel={event => { event.preventDefault(); dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
+  return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onCancel={event => { event.preventDefault(); dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
     <div ref={backdrop} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-transparent backdrop-blur-none" />
     <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute overflow-hidden bg-[#302116] [&>*]:origin-top-left">
       <div ref={shade} className="absolute inset-0 z-[1] bg-black opacity-0" />
@@ -101,6 +101,7 @@ export default function EpisodeExpansion({ selection, onClose }: { selection: Ep
         <p className="mt-4 text-sm text-white/70">Video coming soon</p>
       </div>
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-6 pt-20 pb-[max(24px,env(safe-area-inset-bottom))] sm:px-10">
+        <p className="mb-1 text-sm text-white/65">{seriesTitle}</p>
         <h2 className="mb-5 text-xl font-bold">Episode {String(selection.episode).padStart(2, "0")}</h2>
         <input type="range" aria-label="Playback position" min={0} max={100} value={0} disabled className="block h-1 w-full accent-white opacity-40" />
         <div className="mt-4 flex items-center gap-4 text-white/40">

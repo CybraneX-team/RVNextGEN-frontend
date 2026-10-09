@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
+import { GYRO_SERIES, SeriesArtwork } from "./GyroSeries";
 
 function phase(value: number, start: number, end: number) {
   const t = Math.min(1, Math.max(0, (value - start) / (end - start)));
@@ -10,11 +11,11 @@ function phase(value: number, start: number, end: number) {
 }
 
 const EPISODES = [2, 3, 4, 5, 6, 7, 8];
-const HISTORY_KEY = "gyro-desert-recent-episodes";
+const EMPTY_EPISODES: number[] = [];
 
-function EpisodeCard({ episode, onOpen }: { episode: number; onOpen: (selection: EpisodeSelection) => void }) {
+function EpisodeCard({ episode, onOpen, seriesIndex }: { episode: number; onOpen: (selection: EpisodeSelection) => void; seriesIndex: number }) {
   return <button data-episode={episode} type="button" aria-label={`Play Episode ${String(episode).padStart(2, "0")}`} onClick={event => onOpen({ episode, origin: event.currentTarget })} className="group relative aspect-[9/16] w-[min(24dvh,130px)] shrink-0 snap-start overflow-hidden rounded-[11px] border border-white/15 bg-[#302116] text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white/70">
-    <span aria-hidden="true" className="absolute inset-[-8px] bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: episode % 2 === 0 ? "url('/images/distant-desert.png')" : "url('/images/foreground-dune.png')", backgroundPosition: episode % 2 === 0 ? `${42 + episode * 3}% center` : `${12 + episode * 2}% bottom` }} />
+    {seriesIndex === 0 ? <span aria-hidden="true" className="absolute inset-[-8px] bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: episode % 2 === 0 ? "url('/images/distant-desert.png')" : "url('/images/foreground-dune.png')", backgroundPosition: episode % 2 === 0 ? `${42 + episode * 3}% center` : `${12 + episode * 2}% bottom` }} /> : <SeriesArtwork index={seriesIndex} />}
     <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20" />
     <span className="absolute inset-x-2 bottom-2 text-[11px] font-semibold text-white sm:inset-x-3 sm:bottom-3 sm:text-[13px]">Episode {String(episode).padStart(2, "0")}</span>
   </button>;
@@ -79,19 +80,29 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
 }
 
 export default function DesertParallax({ tilt }: { tilt: { x: number; y: number } }) {
+  const [seriesIndex, setSeriesIndex] = useState(0);
+  const series = GYRO_SERIES[seriesIndex];
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const swiped = useRef(false);
+  const wheelTime = useRef(0);
   const featuredCard = useRef<HTMLElement>(null);
   const [playing, setPlaying] = useState<EpisodeSelection | null>(null);
-  const [recentEpisodes, setRecentEpisodes] = useState<number[]>([]);
-  const [visibleRecentEpisodes, setVisibleRecentEpisodes] = useState<number[]>([]);
-  const [hiddenWatchedEpisodes, setHiddenWatchedEpisodes] = useState<number[]>([]);
+  const [history, setHistory] = useState<Record<string, number[]>>({});
+  const [visibleHistory, setVisibleHistory] = useState<Record<string, number[]>>({});
+  const [hiddenHistory, setHiddenHistory] = useState<Record<string, number[]>>({});
+  const recentEpisodes = history[series.id] ?? EMPTY_EPISODES;
+  const visibleRecentEpisodes = visibleHistory[series.id] ?? EMPTY_EPISODES;
+  const hiddenWatchedEpisodes = hiddenHistory[series.id] ?? EMPTY_EPISODES;
   const upcomingEpisodes = EPISODES.filter(episode => !hiddenWatchedEpisodes.includes(episode));
   useEffect(() => {
     try {
-      const saved: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
-      if (Array.isArray(saved)) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- restore browser-local demo watch history after hydration
-        setRecentEpisodes([...new Set(saved.filter((episode): episode is number => Number.isInteger(episode) && episode >= 1 && episode <= 8))]);
+      const restored: Record<string, number[]> = {};
+      for (const entry of GYRO_SERIES) {
+        const saved: unknown = JSON.parse(localStorage.getItem(entry.historyKey) ?? "[]");
+        if (Array.isArray(saved)) restored[entry.id] = [...new Set(saved.filter((episode): episode is number => Number.isInteger(episode) && episode >= 1 && episode <= 8))];
       }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restore browser-local demo watch history after hydration
+        setHistory(restored);
     } catch { /* Storage may be unavailable; retain in-memory history. */ }
   }, []);
   const closePlayer = useCallback(() => {
@@ -99,11 +110,11 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
       // Until real playback exists, opening an episode records a demo watch.
       // Record history now; the visible carousel refreshes only once offscreen.
       const next = [playing.episode, ...recentEpisodes.filter(episode => episode !== playing.episode)];
-      setRecentEpisodes(next);
-      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch { /* Keep session history. */ }
+      setHistory(previous => ({ ...previous, [series.id]: next }));
+      try { localStorage.setItem(series.historyKey, JSON.stringify(next)); } catch { /* Keep session history. */ }
     }
     setPlaying(null);
-  }, [playing, recentEpisodes]);
+  }, [playing, recentEpisodes, series]);
   const scroller = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
   const parallaxTrack = useRef<HTMLDivElement>(null);
@@ -113,7 +124,8 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
   const [progress, setProgress] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
-  const [savedFeatured, setSavedFeatured] = useState(false);
+  const [savedSeries, setSavedSeries] = useState<Record<string, boolean>>({});
+  const savedFeatured = savedSeries[series.id] ?? false;
   const [episodesExpanded, setEpisodesExpanded] = useState(false);
   const [recentlyExpanded, setRecentlyExpanded] = useState(false);
   const [cardRevealed, setCardRevealed] = useState(false);
@@ -126,11 +138,11 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
     const observer = new IntersectionObserver(([entry]) => {
       // Even a partially visible header or card keeps the whole row stable.
       // Player overlays do not count as scrolling the section out of view.
-      if (!entry.isIntersecting) setHiddenWatchedEpisodes(recentEpisodes);
+      if (!entry.isIntersecting) setHiddenHistory(previous => previous[series.id] === recentEpisodes ? previous : ({ ...previous, [series.id]: recentEpisodes }));
     }, { root: scroller.current, threshold: 0 });
     observer.observe(section);
     return () => observer.disconnect();
-  }, [recentEpisodes, playing]);
+  }, [recentEpisodes, playing, series.id]);
 
   function selectEpisode(episode: number) {
     setSelectedEpisode(episode);
@@ -291,11 +303,17 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
     if (!section || playing) return;
     const observer = new IntersectionObserver(([entry]) => {
       // Keep additions and replay ordering pending while this section is visible.
-      if (!compact || !entry.isIntersecting) setVisibleRecentEpisodes(recentEpisodes);
+      if (!compact || !entry.isIntersecting) setVisibleHistory(previous => previous[series.id] === recentEpisodes ? previous : ({ ...previous, [series.id]: recentEpisodes }));
     }, { root: scroller.current, threshold: 0 });
     observer.observe(section);
     return () => observer.disconnect();
-  }, [recentEpisodes, playing, compact]);
+  }, [recentEpisodes, playing, compact, series.id]);
+  const canSwipeSeries = card >= .999 && !episodesExpanded && !playing;
+  const selectSeries = (index: number) => {
+    if (!canSwipeSeries) return;
+    setSeriesIndex(Math.max(0, Math.min(GYRO_SERIES.length - 1, index)));
+    setSelectedEpisode(1);
+  };
   const compactTop = "max(90px, calc(env(safe-area-inset-top) + 76px))";
   // Match the .40 card scale in both axes while reserving a separate text column.
   const compactWidth = "min(32vw, 144px, 15.75dvh)";
@@ -310,25 +328,32 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
       <div ref={parallaxTrack} className="relative h-[calc(914dvh+48px)]">
         <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)]" style={{ opacity: card }} />
-          <article ref={featuredCard} aria-label="Episode 01" className="relative shrink-0 overflow-hidden bg-[#53331f] transition-transform duration-[1400ms] ease-[cubic-bezier(.45,0,.2,1)] motion-reduce:transition-none" style={{
+          <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-transform duration-[1400ms] ease-[cubic-bezier(.45,0,.2,1)] motion-reduce:transition-none" onPointerDown={event => {
+            swipeStart.current = { x: event.clientX, y: event.clientY };
+            swiped.current = false;
+          }} onPointerUp={event => {
+            const start = swipeStart.current;
+            swipeStart.current = null;
+            if (!start || !canSwipeSeries) return;
+            const dx = event.clientX - start.x;
+            if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(event.clientY - start.y)) {
+              swiped.current = true;
+              selectSeries(seriesIndex + (dx < 0 ? 1 : -1));
+            }
+          }} onPointerCancel={() => { swipeStart.current = null; }} onClickCapture={event => { if (swiped.current) { event.preventDefault(); event.stopPropagation(); swiped.current = false; } }} onWheel={event => {
+            if (canSwipeSeries && Math.abs(event.deltaX) > Math.abs(event.deltaY) && Math.abs(event.deltaX) > 12 && performance.now() - wheelTime.current > 800) {
+              wheelTime.current = performance.now();
+              selectSeries(seriesIndex + (event.deltaX > 0 ? 1 : -1));
+            }
+          }} style={{
             width: `calc(${100 * (1 - card)}% + min(${80 * card}vw, ${360 * card}px, ${39.375 * card}dvh))`,
             height: `calc(${100 * (1 - card)}% + min(${(80 * 16 / 9) * card}vw, ${640 * card}px, ${70 * card}dvh))`,
-            borderRadius: `${24 * card}px`,
-            containerType: "inline-size",
-            boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`,
             transform: compact
               ? `translate(calc(-50vw + 32px + min(16vw, 72px, 7.875dvh)), calc(-50dvh + ${compactTop} + min(28.444444vw, 128px, 14dvh))) scale(.40)`
               : `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .44})`,
           }}>
-            <div aria-hidden="true" className="absolute inset-[-48px] bg-cover bg-[position:58%_center] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out" style={{
-              backgroundImage: "url('/images/distant-desert.png')",
-              transform: `translate3d(${-tilt.x * .7 * drift}px,${-tilt.y * .7 * drift}px,0) scale(${1.06 + focus * .24 * motion})`,
-              filter: `blur(${focus * 13 * motion}px)`,
-            }} />
-            <div aria-hidden="true" className="absolute inset-[-50px] scale-80 origin-bottom bg-cover bg-[position:10%_bottom] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out sm:bg-[position:center_bottom]" style={{
-              backgroundImage: "url('/images/foreground-dune.png')",
-              transform: `translate3d(${tilt.x * 1.25 * drift}px,${tilt.y * drift + focus * 28 * motion}px,0) scale(${1.04 + focus * .07 * motion})`,
-            }} />
+            {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
+            <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
             <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out [text-shadow:0_2px_24px_#30120780]" style={{
               top: `calc(${104 - card * 80}px + env(safe-area-inset-top))`,
@@ -336,24 +361,32 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
               transform: `translate3d(${tilt.x * .45 * drift}px,${tilt.y * .45 * drift + (1 - titleReveal) * 24 * motion}px,0)`,
             }}>
               <p className="mb-3 text-[clamp(11px,3cqw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
-              <h2 className="m-0 whitespace-nowrap font-serif text-[min(8cqw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">A bond <em className="font-normal">beyond</em> words.</h2>
+              <h2 className="m-0 whitespace-nowrap font-serif text-[min(8cqw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
               <h1 className="text-[22px] font-bold tracking-[-.04em] text-white sm:text-[30px]">Episode 01</h1>
               <span aria-hidden="true" className="grid size-[40px] shrink-0 place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-md"><PlayIcon className="size-[14px]" /></span>
             </div>
-            {card >= .999 && <button type="button" aria-label="Play Episode 01" onClick={() => { if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
-          </article>
+            {card >= .999 && <button type="button" aria-label={index === seriesIndex ? `Play ${entry.title} Episode 01` : `View series ${index + 1}: ${entry.title}`} onClick={() => { if (index !== seriesIndex) selectSeries(index); else if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
+          </article>)}
+          <div aria-hidden={!canSwipeSeries} inert={!canSwipeSeries} className="absolute inset-x-0 top-full mt-5 flex items-center justify-center gap-3 text-[12px] text-white/60 transition-opacity duration-300" style={{ opacity: canSwipeSeries ? 1 : 0 }}>
+            <button type="button" onClick={() => selectSeries(seriesIndex === 0 ? 1 : 0)} className="flex min-h-8 items-center gap-2 rounded-full px-3 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
+              {seriesIndex === 1 && <span aria-hidden="true">←</span>}
+              Swipe to view series {seriesIndex === 0 ? 2 : 1}
+              {seriesIndex === 0 && <span aria-hidden="true">→</span>}
+            </button>
+          </div>
+          </div>
           <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none" style={{ top: compactTop, left: `calc(32px + ${compactWidth} + 16px)`, opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, transitionDelay: compact && !reducedMotion ? "700ms" : "0ms", pointerEvents: compact ? "auto" : "none" }}>
             <p className="mb-2 text-[10px] font-semibold tracking-[.2em] text-[#f4d6b0]/75">RVNEXTGEN ORIGINAL</p>
-            <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">A bond <em className="font-normal">beyond</em> words.</h2>
+            <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">{series.lead} <em className="font-normal">{series.emphasis}</em> {series.end}</h2>
             <p className="mt-2 text-[11px] font-medium text-white/55 sm:text-sm">Episode 01</p>
-            <p className="mt-3 hidden text-xs leading-relaxed text-white/65 sm:block">A quiet journey across the desert brings an unexpected bond to life.</p>
+            <p className="mt-3 hidden text-xs leading-relaxed text-white/65 sm:block">{series.description}</p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <button type="button" onClick={() => { if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-[#1a130e] transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 <PlayIcon className="size-3.5" /> Play
               </button>
-              <button type="button" aria-pressed={savedFeatured} onClick={() => setSavedFeatured(!savedFeatured)} className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 text-xs font-medium text-white/90 backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <button type="button" aria-pressed={savedFeatured} onClick={() => setSavedSeries(previous => ({ ...previous, [series.id]: !savedFeatured }))} className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 text-xs font-medium text-white/90 backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 <svg aria-hidden="true" className="size-4" viewBox="0 0 24 24" fill={savedFeatured ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.8L6 21V4.75Z" /></svg>
                 {savedFeatured ? "Saved" : "Save"}
               </button>
@@ -370,7 +403,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
                   {upcomingEpisodes.length > 0 && <EpisodePicker key={`${featuredLift}-${compact}`} selected={selectedEpisode} episodes={upcomingEpisodes} onSelect={selectEpisode} openBelow={compact} />}
                 </div>
                 <div ref={episodeCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
-                  {upcomingEpisodes.map(episode => <EpisodeCard key={episode} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); setPlaying(selection); }} />)}
+                  {upcomingEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); setPlaying(selection); }} />)}
                   {upcomingEpisodes.length === 0 && <p className="py-8 text-sm text-white/50">You’re all caught up. Replay an episode below.</p>}
                 </div>
                 <div aria-hidden={!featuredLift || compact} className="pointer-events-none absolute inset-x-8 top-full mt-1 flex items-center justify-center gap-2 text-[10px] leading-3 font-medium tracking-[.04em] text-white/45 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none" style={{ opacity: featuredLift && !compact ? 1 : 0, transform: `translateY(${compact ? -6 : 0}px)` }}>
@@ -381,7 +414,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
               <section ref={recentlyWatchedSection} aria-label="Recently watched" aria-hidden={!compact} inert={!compact} className="relative mx-auto w-full max-w-5xl pt-8 pb-[max(100px,calc(env(safe-area-inset-bottom)+80px))] transition-[opacity,transform] duration-[1000ms] ease-out motion-reduce:transition-none" style={{ opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 28}px)`, visibility: compact ? "visible" : "hidden", transitionDelay: compact && !reducedMotion ? "350ms" : "0ms" }}>
                 <h3 className="mb-4 px-8 text-[13px] font-semibold tracking-[.04em] text-white/85">Recently watched</h3>
                 {visibleRecentEpisodes.length > 0 ? <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
-                  {visibleRecentEpisodes.map(episode => <EpisodeCard key={episode} episode={episode} onOpen={setPlaying} />)}
+                  {visibleRecentEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={setPlaying} />)}
                 </div> : <p className="px-8 py-6 text-sm text-white/50">Episodes you open will appear here.</p>}
               </section>
             </div>
@@ -389,6 +422,6 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
         </div>
       </div>
     </div>
-    {playing && <EpisodeExpansion selection={playing} onClose={closePlayer} />}
+    {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} onClose={closePlayer} />}
   </div>;
 }
