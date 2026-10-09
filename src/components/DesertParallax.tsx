@@ -297,9 +297,9 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
     return () => observer.disconnect();
   }, [recentEpisodes, playing, compact]);
   const compactTop = "max(90px, calc(env(safe-area-inset-top) + 76px))";
-  // Match the .42 card scale in both axes while reserving a separate text column.
-  const compactWidth = "min(33.6vw, 151.2px, 16.5375dvh)";
-  const compactHeight = "min(59.733333vw, 268.8px, 29.4dvh)";
+  // Match the .40 card scale in both axes while reserving a separate text column.
+  const compactWidth = "min(32vw, 144px, 15.75dvh)";
+  const compactHeight = "min(56.888889vw, 256px, 28dvh)";
   const episodeRowHeight = upcomingEpisodes.length ? "calc(min(42.666667dvh, 231.111111px) + 56px)" : "140px";
   const expandedListTop = `calc(100% - max(7dvh, calc(env(safe-area-inset-bottom) + 24px)) - ${episodeRowHeight})`;
   const motion = reducedMotion ? 0 : 1;
@@ -317,7 +317,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
             containerType: "inline-size",
             boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`,
             transform: compact
-              ? `translate(calc(-50vw + 32px + min(16.8vw, 75.6px, 8.26875dvh)), calc(-50dvh + ${compactTop} + min(29.866667vw, 134.4px, 14.7dvh))) scale(.42)`
+              ? `translate(calc(-50vw + 32px + min(16vw, 72px, 7.875dvh)), calc(-50dvh + ${compactTop} + min(28.444444vw, 128px, 14dvh))) scale(.40)`
               : `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .38})`,
           }}>
             <div aria-hidden="true" className="absolute inset-[-48px] bg-cover bg-[position:58%_center] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out" style={{
@@ -364,7 +364,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
           </div>
           <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-[1400ms] ease-[cubic-bezier(.45,0,.2,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? `calc(${compactTop} + max(${compactHeight}, 224px) + 24px)` : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
-              <div ref={upcomingSection}>
+              <div ref={upcomingSection} className="relative">
               <div className="mb-3 flex items-center justify-between gap-3 px-8">
                 <h3 className="text-[13px] font-semibold tracking-[.04em] text-white/85">More episodes</h3>
                 {upcomingEpisodes.length > 0 && <EpisodePicker key={`${featuredLift}-${compact}`} selected={selectedEpisode} episodes={upcomingEpisodes} onSelect={selectEpisode} openBelow={compact} />}
@@ -372,6 +372,10 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
               <div ref={episodeCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
                 {upcomingEpisodes.map(episode => <EpisodeCard key={episode} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); setPlaying(selection); }} />)}
                 {upcomingEpisodes.length === 0 && <p className="py-8 text-sm text-white/50">You’re all caught up. Replay an episode below.</p>}
+              </div>
+              <div aria-hidden={!featuredLift || compact} className="pointer-events-none absolute inset-x-8 top-full mt-1 flex items-center justify-center gap-2 text-[10px] leading-3 font-medium tracking-[.04em] text-white/45 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none" style={{ opacity: featuredLift && !compact ? 1 : 0, transform: `translateY(${compact ? -6 : 0}px)` }}>
+                <span>Scroll for recently watched</span>
+                <svg aria-hidden="true" className="size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3v13m-4-4 4 4 4-4" /></svg>
               </div>
               </div>
               <section ref={recentlyWatchedSection} aria-label="Recently watched" aria-hidden={!compact} inert={!compact} className="relative mx-auto w-full max-w-5xl pt-8 pb-[max(100px,calc(env(safe-area-inset-bottom)+80px))] transition-[opacity,transform] duration-[1000ms] ease-out motion-reduce:transition-none" style={{ opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 28}px)`, visibility: compact ? "visible" : "hidden", transitionDelay: compact && !reducedMotion ? "350ms" : "0ms" }}>
