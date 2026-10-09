@@ -10,44 +10,56 @@ import type { ApiContent } from "@/lib/content";
 import GenrePicker from "./GenrePicker";
 import EditContentModal from "./EditContentModal";
 
+type Source = "youtube" | "cloudflare";
+
 const input = "h-10 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[13px] text-white outline-none placeholder:text-white/35 focus:border-white/30";
 const label = "mb-1 block text-[12px] font-medium text-white/55";
 const btnPrimary = "h-10 rounded-lg bg-[#2f7d5b] px-4 text-[13px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50";
 const btnGhost = "h-10 rounded-lg border border-white/12 px-3 text-[13px] text-white/70 hover:bg-white/5";
 
-type EpisodeSource = "youtube" | "cf-url" | "cf-file";
-
-/** Compact form to add one episode to a given series + season. */
-function AddEpisodeForm({ seriesId, seasonNumber, nextEpisodeNumber, token, onAdded, onCancel }: {
-  seriesId: string; seasonNumber: number; nextEpisodeNumber: number; token: string;
+/** Add one episode to a series + season, using this composer's source (YouTube or Cloudflare). */
+function AddEpisodeForm({ source, seriesId, seasonNumber, nextEpisodeNumber, token, onAdded, onCancel }: {
+  source: Source; seriesId: string; seasonNumber: number; nextEpisodeNumber: number; token: string;
   onAdded: () => void; onCancel: () => void;
 }) {
-  const [source, setSource] = useState<EpisodeSource>("youtube");
+  const [cfMode, setCfMode] = useState<"url" | "file">("url");
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [posterUrl, setPosterUrl] = useState("");
   const [episodeNumber, setEpisodeNumber] = useState(String(nextEpisodeNumber));
   const [busy, setBusy] = useState(false);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const posterRef = useRef<HTMLInputElement>(null);
+
+  async function choosePoster(f?: File) {
+    if (!f || uploadingPoster) return;
+    if (!f.type.startsWith("image/")) { setError("Choose an image file."); return; }
+    setUploadingPoster(true); setError(null);
+    try { const { url: uploaded } = await uploadPoster(f, token); setPosterUrl(uploaded); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not upload the image."); }
+    finally { setUploadingPoster(false); }
+  }
 
   async function add() {
     const epNum = Number(episodeNumber);
     if (!Number.isInteger(epNum) || epNum <= 0) { setError("Episode number must be a whole number > 0"); return; }
     if (source === "youtube" && !url.trim()) { setError("Paste a YouTube URL"); return; }
-    if (source === "cf-url" && !url.trim()) { setError("Paste a video URL"); return; }
-    if (source === "cf-file" && !file) { setError("Choose a video file"); return; }
+    if (source === "cloudflare" && cfMode === "url" && !url.trim()) { setError("Paste a video URL"); return; }
+    if (source === "cloudflare" && cfMode === "file" && !file) { setError("Choose a video file"); return; }
     setBusy(true); setError(null);
     try {
-      const common = { seriesId, seasonNumber, episodeNumber: epNum, type: "EPISODE" as const };
+      const common = { seriesId, seasonNumber, episodeNumber: epNum, type: "EPISODE" as const, posterUrl: posterUrl.trim() || undefined };
       if (source === "youtube") {
         await createYoutube({ url: url.trim(), title: title.trim() || undefined, ...common }, token);
       } else {
         const created = await createCloudflare({
           title: title.trim() || `Episode ${epNum}`,
-          sourceUrl: source === "cf-url" ? url.trim() : undefined, ...common,
+          sourceUrl: cfMode === "url" ? url.trim() : undefined, ...common,
         }, token);
-        if (source === "cf-file" && file) {
+        if (cfMode === "file" && file) {
           const { uploadUrl } = await createUploadUrl(created.id, token, title.trim() || undefined);
           await uploadVideoFile(uploadUrl, file);
         }
@@ -62,17 +74,19 @@ function AddEpisodeForm({ seriesId, seasonNumber, nextEpisodeNumber, token, onAd
 
   return (
     <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-3">
-      <div className="mb-2 inline-flex rounded-lg border border-white/12 p-0.5">
-        {([["youtube", "YouTube"], ["cf-url", "Cloudflare URL"], ["cf-file", "Cloudflare file"]] as [EpisodeSource, string][]).map(([m, labelText]) => (
-          <button key={m} type="button" onClick={() => setSource(m)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${source === m ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{labelText}</button>
-        ))}
-      </div>
+      {source === "cloudflare" && (
+        <div className="mb-2 inline-flex rounded-lg border border-white/12 p-0.5">
+          {(["url", "file"] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setCfMode(m)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium ${cfMode === m ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{m === "url" ? "Paste URL" : "Upload file"}</button>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-[80px_1fr] gap-2">
         <div><span className={label}>Ep #</span><input className={input} type="number" min={1} value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} /></div>
         <div><span className={label}>Title</span><input className={input} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder={source === "youtube" ? "Optional — pulled from YouTube" : "Episode title"} /></div>
       </div>
       <div className="mt-2">
-        {source === "cf-file" ? (
+        {source === "cloudflare" && cfMode === "file" ? (
           <>
             <span className={label}>Video file</span>
             <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -85,12 +99,23 @@ function AddEpisodeForm({ seriesId, seasonNumber, nextEpisodeNumber, token, onAd
           </>
         )}
       </div>
+      <div className="mt-2">
+        <span className={label}>Episode image{source === "youtube" ? " (optional — defaults to the YouTube thumbnail)" : ""}</span>
+        <div className="flex items-center gap-3">
+          {posterUrl
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={posterUrl} alt="" className="h-12 w-20 rounded-md object-cover" referrerPolicy="no-referrer" />
+            : <div className="grid h-12 w-20 place-items-center rounded-md border border-dashed border-white/15 text-[11px] text-white/35">None</div>}
+          <input ref={posterRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void choosePoster(e.target.files?.[0]); e.currentTarget.value = ""; }} />
+          <button type="button" onClick={() => posterRef.current?.click()} disabled={uploadingPoster} className={btnGhost}>{uploadingPoster ? "Uploading…" : "Upload image"}</button>
+        </div>
+      </div>
       {error && <p role="alert" className="mt-2 text-[12px] text-[#ff8f8f]">{error}</p>}
       <div className="mt-3 flex gap-2">
-        <button type="button" onClick={add} disabled={busy} className={btnPrimary}>{busy ? "Adding…" : "Add episode"}</button>
+        <button type="button" onClick={add} disabled={busy || uploadingPoster} className={btnPrimary}>{busy ? "Adding…" : "Add episode"}</button>
         <button type="button" onClick={onCancel} className={btnGhost}>Cancel</button>
       </div>
-      {source !== "youtube" && <p className="mt-2 text-[12px] text-white/40">Cloudflare episodes start as a draft while the video encodes — publish from the row once it&apos;s ready.</p>}
+      {source === "cloudflare" && <p className="mt-2 text-[12px] text-white/40">Cloudflare episodes start as a draft while the video encodes — publish from the row once it&apos;s ready.</p>}
     </div>
   );
 }
@@ -113,7 +138,7 @@ function EpisodeRow({ ep, token, onChanged, onEdit }: { ep: ApiContent; token: s
   }
 
   return (
-    <div className="flex items-center gap-3 border-t border-white/5 px-3 py-2 text-[13px]">
+    <div className="flex flex-wrap items-center gap-3 border-t border-white/5 px-3 py-2 text-[13px]">
       <span className="w-8 shrink-0 text-white/45">E{ep.episodeNumber ?? "—"}</span>
       <span className="min-w-0 flex-1 truncate text-white/85">{ep.title}</span>
       <span className="shrink-0 rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/55">{ep.source}</span>
@@ -125,11 +150,12 @@ function EpisodeRow({ ep, token, onChanged, onEdit }: { ep: ApiContent; token: s
           ? <><button onClick={remove} disabled={!!busy} className="rounded-md bg-[#8f2f2f] px-2.5 py-1 text-[12px] font-medium text-white hover:bg-[#7a2929] disabled:opacity-50">{busy === "del" ? "…" : "Confirm"}</button><button onClick={() => setArmed(false)} className="rounded-md border border-white/15 px-2.5 py-1 text-[12px] text-white/70 hover:bg-white/10">✕</button></>
           : <button onClick={() => setArmed(true)} className="rounded-md border border-[#8f2f2f]/50 px-2.5 py-1 text-[12px] text-[#ff9f9f] hover:bg-[#8f2f2f]/20">Delete</button>}
       </div>
-      {error && <span role="alert" className="text-[11px] text-[#ff8f8f]">{error}</span>}
+      {error && <span role="alert" className="w-full text-[11px] text-[#ff8f8f]">{error}</span>}
     </div>
   );
 }
 
+/** Inline "new series" form (name, poster, genre). */
 function CreateSeriesForm({ token, onCreated, onCancel }: { token: string; onCreated: (id: string) => void; onCancel: () => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -162,15 +188,15 @@ function CreateSeriesForm({ token, onCreated, onCancel }: { token: string; onCre
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <h3 className="mb-3 text-[15px] font-semibold text-white">New series</h3>
       <div className="flex flex-col gap-3">
-        <div><span className={label}>Title</span><input className={input} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder="e.g. Lock & Key" /></div>
+        <div><span className={label}>Series name</span><input className={input} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder="e.g. Lock & Key" /></div>
         <div><span className={label}>Description</span><textarea className={`${input} h-20 resize-y py-2`} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} /></div>
         <div>
-          <span className={label}>Poster</span>
+          <span className={label}>Series image</span>
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {posterUrl ? <img src={posterUrl} alt="" className="h-16 w-28 rounded-md object-cover" /> : <div className="grid h-16 w-28 place-items-center rounded-md border border-dashed border-white/15 text-[11px] text-white/35">None</div>}
             <input ref={posterRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void choosePoster(e.target.files?.[0]); e.currentTarget.value = ""; }} />
-            <button type="button" onClick={() => posterRef.current?.click()} disabled={uploading} className={btnGhost}>{uploading ? "Uploading…" : "Upload poster"}</button>
+            <button type="button" onClick={() => posterRef.current?.click()} disabled={uploading} className={btnGhost}>{uploading ? "Uploading…" : "Upload image"}</button>
           </div>
         </div>
         <div><span className={label}>Genre</span><GenrePicker value={categoryIds} onChange={setCategoryIds} /></div>
@@ -184,7 +210,11 @@ function CreateSeriesForm({ token, onCreated, onCancel }: { token: string; onCre
   );
 }
 
-export default function SeriesBuilder({ token }: { token: string }) {
+/**
+ * Series mode for an add form: pick an existing series (or create one), then build its
+ * seasons and add episodes — all using `source` (YouTube or Cloudflare).
+ */
+export default function SeriesComposer({ token, source }: { token: string; source: Source }) {
   const [list, setList] = useState<AdminSeries[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tree, setTree] = useState<SeriesTree | null>(null);
@@ -204,7 +234,7 @@ export default function SeriesBuilder({ token }: { token: string }) {
   }, [token]);
   useEffect(() => {
     if (!selectedId) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the view before fetching the newly selected series
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the view before fetching the selected series
     setTree(null); setExtraSeasons([]);
     reloadTree(selectedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,35 +248,39 @@ export default function SeriesBuilder({ token }: { token: string }) {
     catch (e) { setError(e instanceof Error ? e.message : "Could not delete series"); }
   }
 
-  // Seasons to render = those with episodes, plus any the admin just added (empty, pending first episode).
-  const seasonNumbers = [...new Set([...(tree?.seasons.map((s) => s.seasonNumber) ?? []), ...extraSeasons])].sort((a, b) => a - b);
-  const maxSeason = seasonNumbers.length ? Math.max(...seasonNumbers) : 0;
+  const combined = [...new Set([...(tree?.seasons.map((s) => s.seasonNumber) ?? []), ...extraSeasons])];
+  // Always show at least Season 1 so a brand-new series immediately offers "+ Add episode".
+  const seasonNumbers = (combined.length ? combined : [1]).sort((a, b) => a - b);
+  const maxSeason = Math.max(...seasonNumbers);
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="flex flex-col gap-2">
-        <button onClick={() => { setCreating(true); setSelectedId(null); }} className={btnPrimary}>+ New series</button>
-        {error && <p role="alert" className="text-[12px] text-[#ff8f8f]">{error}</p>}
-        <div className="mt-1 flex flex-col gap-1">
-          {list === null ? <p className="text-[13px] text-white/40">Loading…</p>
-            : list.length === 0 ? <p className="text-[13px] text-white/40">No series yet.</p>
-            : list.map((s) => (
-              <button key={s.id} onClick={() => { setCreating(false); setSelectedId(s.id); }} className={`rounded-lg px-3 py-2 text-left text-[13px] ${selectedId === s.id ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5"}`}>
-                <div className="truncate font-medium">{s.title}</div>
-                <div className="text-[11px] text-white/40">{s.episodeCount} episode{s.episodeCount === 1 ? "" : "s"} · {s.visibility.toLowerCase()}</div>
-              </button>
-            ))}
+    <div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px]">
+          <span className={label}>Series</span>
+          <select className={input} value={selectedId ?? ""} onChange={(e) => { setCreating(false); setSelectedId(e.target.value || null); }}>
+            <option value="" className="bg-[#14171a]">— Select a series —</option>
+            {list?.map((s) => <option key={s.id} value={s.id} className="bg-[#14171a]">{s.title} ({s.episodeCount})</option>)}
+          </select>
         </div>
-      </aside>
+        <button type="button" onClick={() => { setCreating(true); setSelectedId(null); }} className={btnGhost}>+ New series</button>
+        {error && <p role="alert" className="w-full text-[12px] text-[#ff8f8f]">{error}</p>}
+      </div>
 
-      <section>
+      <div className="mt-4">
         {creating ? <CreateSeriesForm token={token} onCreated={(id) => { setCreating(false); reloadList(); setSelectedId(id); }} onCancel={() => setCreating(false)} />
-          : !selectedId ? <p className="text-[13px] text-white/45">Select a series on the left, or create a new one.</p>
+          : !selectedId ? <p className="text-[13px] text-white/45">Pick a series to add episodes to, or create a new one. Episodes you add here use {source === "youtube" ? "YouTube" : "Cloudflare"}.</p>
           : !tree ? <p className="text-[13px] text-white/40">Loading…</p>
           : (
             <div>
-              <div className="mb-4 flex items-center gap-3">
-                <h2 className="text-[20px] font-semibold text-white">{tree.series.title}</h2>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                {tree.series.posterUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={tree.series.posterUrl} alt="" className="h-12 w-20 rounded-md object-cover" />
+                  </>
+                ) : null}
+                <h2 className="text-[18px] font-semibold text-white">{tree.series.title}</h2>
                 <span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/55">{tree.series.visibility}</span>
                 <div className="ml-auto flex gap-2">
                   <button onClick={refresh} className={btnGhost}>Refresh</button>
@@ -255,8 +289,6 @@ export default function SeriesBuilder({ token }: { token: string }) {
                     : <button onClick={() => setDelArmed(true)} className="h-10 rounded-lg border border-[#8f2f2f]/50 px-3 text-[13px] text-[#ff9f9f] hover:bg-[#8f2f2f]/20">Delete series</button>}
                 </div>
               </div>
-
-              {seasonNumbers.length === 0 && <p className="mb-3 text-[13px] text-white/45">No seasons yet. Add one to start.</p>}
 
               <div className="flex flex-col gap-4">
                 {seasonNumbers.map((num) => {
@@ -271,7 +303,7 @@ export default function SeriesBuilder({ token }: { token: string }) {
                       </div>
                       {episodes.length === 0 && addingToSeason !== num && <p className="px-3 pb-3 text-[12px] text-white/40">No episodes in this season yet.</p>}
                       {episodes.map((ep) => <EpisodeRow key={ep.id} ep={ep} token={token} onChanged={refresh} onEdit={setEditId} />)}
-                      {addingToSeason === num && <div className="p-3 pt-0"><AddEpisodeForm seriesId={selectedId} seasonNumber={num} nextEpisodeNumber={nextEp} token={token} onAdded={() => { setAddingToSeason(null); refresh(); }} onCancel={() => setAddingToSeason(null)} /></div>}
+                      {addingToSeason === num && <div className="p-3 pt-0"><AddEpisodeForm source={source} seriesId={selectedId} seasonNumber={num} nextEpisodeNumber={nextEp} token={token} onAdded={() => { setAddingToSeason(null); refresh(); }} onCancel={() => setAddingToSeason(null)} /></div>}
                     </div>
                   );
                 })}
@@ -280,7 +312,7 @@ export default function SeriesBuilder({ token }: { token: string }) {
               <button onClick={() => { const next = maxSeason + 1; setExtraSeasons((s) => [...s, next]); setAddingToSeason(next); }} className="mt-4 rounded-lg border border-white/15 px-4 py-2 text-[13px] font-medium text-white/80 hover:bg-white/10">+ Add season {maxSeason + 1}</button>
             </div>
           )}
-      </section>
+      </div>
 
       {editId && <EditContentModal id={editId} token={token} onClose={() => setEditId(null)} onSaved={refresh} />}
     </div>

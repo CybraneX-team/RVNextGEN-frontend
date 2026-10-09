@@ -10,7 +10,7 @@ const label = "mb-1 block text-[12px] font-medium text-white/55";
 const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
 const VISIBILITIES = ["PUBLISHED", "DRAFT", "PRIVATE", "ARCHIVED"] as const;
 
-type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number] };
+type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number]; episodeNumber: string };
 
 /** Edit an existing title: loads it, lets the admin change fields/genre/visibility, saves via PATCH. */
 export default function EditContentModal({ id, token, onClose, onSaved }: { id: string; token: string | null; onClose: () => void; onSaved: () => void }) {
@@ -29,7 +29,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     getContent(id, token).then((c) => {
       if (!live) return;
       setItem(c);
-      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]) });
+      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "" });
       setCategoryIds(c.categories.map((x) => x.id));
     }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Couldn’t load this title."); });
     return () => { live = false; };
@@ -41,11 +41,19 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const isEpisode = item?.type === "EPISODE";
+
   async function save() {
     if (!token || !fields || busy) return;
     setBusy(true); setError(null);
     try {
-      await updateContent(id, {
+      await updateContent(id, isEpisode ? {
+        // Episodes keep it minimal — the same fields used when adding one.
+        title: fields.title.trim(),
+        posterUrl: fields.posterUrl.trim() || undefined,
+        youtubeUrl: item?.source === "YOUTUBE" ? fields.youtubeUrl.trim() || undefined : undefined,
+        episodeNumber: fields.episodeNumber ? Number(fields.episodeNumber) : undefined,
+      } : {
         title: fields.title.trim(),
         tagline: fields.tagline.trim(),
         description: fields.description.trim(),
@@ -84,7 +92,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:p-8" role="dialog" aria-modal="true" aria-label="Edit title" onClick={onClose}>
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-[#101314] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-[18px] font-semibold text-white">Edit title</h2>
+          <h2 className="text-[18px] font-semibold text-white">{isEpisode ? "Edit episode" : "Edit title"}</h2>
           <button onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-full bg-white/5 text-white/70 hover:bg-white/10">✕</button>
         </div>
         {error && <p role="alert" className="mb-3 text-[13px] text-[#ff8f8f]">{error}</p>}
@@ -98,17 +106,29 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
               <p className="mt-2 text-[12px] text-white/40">{item?.source === "YOUTUBE" ? `YouTube · ${item.youtubeId}` : "Cloudflare"}</p>
             </div>
             <div className="flex flex-col gap-3">
-              <div><span className={label}>Title</span><input className={input} value={fields.title} onChange={(e) => set("title", e.target.value)} maxLength={300} /></div>
-              <div><span className={label}>Tagline</span><input className={input} value={fields.tagline} onChange={(e) => set("tagline", e.target.value)} maxLength={300} /></div>
-              <div><span className={label}>Description</span><textarea className={`${input} h-20 resize-y py-2`} value={fields.description} onChange={(e) => set("description", e.target.value)} maxLength={5000} /></div>
-              <div><span className={label}>YouTube URL</span><input className={input} type="url" value={fields.youtubeUrl} onChange={(e) => set("youtubeUrl", e.target.value)} maxLength={500} placeholder="Paste a new YouTube link to replace the video" /></div>
-              <div><span className={label}>Thumbnail URL</span><input className={input} value={fields.posterUrl} onChange={(e) => set("posterUrl", e.target.value)} maxLength={2048} placeholder="Upload an image or paste a URL" /></div>
-              <div><span className={label}>Genre</span><GenrePicker value={categoryIds} onChange={setCategoryIds} /></div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><span className={label}>Rating</span><input className={input} type="number" min={0} max={5} step={0.1} value={fields.rating} onChange={(e) => set("rating", e.target.value)} placeholder="0–5" /></div>
-                <div><span className={label}>Type</span><select className={input} value={fields.type} onChange={(e) => set("type", e.target.value as ContentType)}>{TYPES.map((t) => <option key={t} value={t} className="bg-[#14171a]">{t}</option>)}</select></div>
-                <div><span className={label}>Visibility</span><select className={input} value={fields.visibility} onChange={(e) => set("visibility", e.target.value as Fields["visibility"])}>{VISIBILITIES.map((v) => <option key={v} value={v} className="bg-[#14171a]">{v}</option>)}</select></div>
-              </div>
+              {isEpisode ? (
+                <>
+                  <div className="grid grid-cols-[90px_1fr] gap-3">
+                    <div><span className={label}>Episode #</span><input className={input} type="number" min={1} value={fields.episodeNumber} onChange={(e) => set("episodeNumber", e.target.value)} /></div>
+                    <div><span className={label}>Title</span><input className={input} value={fields.title} onChange={(e) => set("title", e.target.value)} maxLength={300} /></div>
+                  </div>
+                  {item?.source === "YOUTUBE" && <div><span className={label}>YouTube URL</span><input className={input} type="url" value={fields.youtubeUrl} onChange={(e) => set("youtubeUrl", e.target.value)} maxLength={500} placeholder="Paste a new YouTube link to replace the video" /></div>}
+                </>
+              ) : (
+                <>
+                  <div><span className={label}>Title</span><input className={input} value={fields.title} onChange={(e) => set("title", e.target.value)} maxLength={300} /></div>
+                  <div><span className={label}>Tagline</span><input className={input} value={fields.tagline} onChange={(e) => set("tagline", e.target.value)} maxLength={300} /></div>
+                  <div><span className={label}>Description</span><textarea className={`${input} h-20 resize-y py-2`} value={fields.description} onChange={(e) => set("description", e.target.value)} maxLength={5000} /></div>
+                  <div><span className={label}>YouTube URL</span><input className={input} type="url" value={fields.youtubeUrl} onChange={(e) => set("youtubeUrl", e.target.value)} maxLength={500} placeholder="Paste a new YouTube link to replace the video" /></div>
+                  <div><span className={label}>Thumbnail URL</span><input className={input} value={fields.posterUrl} onChange={(e) => set("posterUrl", e.target.value)} maxLength={2048} placeholder="Upload an image or paste a URL" /></div>
+                  <div><span className={label}>Genre</span><GenrePicker value={categoryIds} onChange={setCategoryIds} /></div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div><span className={label}>Rating</span><input className={input} type="number" min={0} max={5} step={0.1} value={fields.rating} onChange={(e) => set("rating", e.target.value)} placeholder="0–5" /></div>
+                    <div><span className={label}>Type</span><select className={input} value={fields.type} onChange={(e) => set("type", e.target.value as ContentType)}>{TYPES.map((t) => <option key={t} value={t} className="bg-[#14171a]">{t}</option>)}</select></div>
+                    <div><span className={label}>Visibility</span><select className={input} value={fields.visibility} onChange={(e) => set("visibility", e.target.value as Fields["visibility"])}>{VISIBILITIES.map((v) => <option key={v} value={v} className="bg-[#14171a]">{v}</option>)}</select></div>
+                  </div>
+                </>
+              )}
               <div className="flex items-center gap-3 pt-1">
                 <button type="button" onClick={save} disabled={busy || uploadingPoster} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "Saving…" : "Save changes"}</button>
                 <button type="button" onClick={onClose} className="h-11 rounded-lg border border-white/12 px-4 text-[14px] text-white/70 hover:bg-white/5">Cancel</button>

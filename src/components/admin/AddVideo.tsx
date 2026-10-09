@@ -5,10 +5,11 @@ import { useAuth } from "../AuthProvider";
 import { createYoutube, uploadPoster, youtubePreview, type YoutubePreview } from "@/lib/admin";
 import type { ContentType } from "@/lib/content";
 import GenrePicker from "./GenrePicker";
+import SeriesComposer from "./SeriesComposer";
 
 const input = "h-11 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-white/30";
 const label = "mb-1 block text-[12px] font-medium text-white/55";
-const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
+const TYPES: ContentType[] = ["MOVIE", "SHORT"];
 const VISIBILITIES = ["PUBLISHED", "DRAFT", "PRIVATE"] as const;
 
 type Fields = { title: string; tagline: string; description: string; posterUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number] };
@@ -16,6 +17,7 @@ const EMPTY: Fields = { title: "", tagline: "", description: "", posterUrl: "", 
 
 export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
   const { accessToken } = useAuth();
+  const [kind, setKind] = useState<"movie" | "series">("movie");
   const [url, setUrl] = useState("");
   const [preview, setPreview] = useState<YoutubePreview | null>(null);
   const [fields, setFields] = useState<Fields>(EMPTY);
@@ -84,8 +86,18 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-[20px] font-semibold text-white">Add a YouTube video</h2>
-      <p className="mt-1 text-[13px] text-white/50">Paste a link — we pull the title, thumbnail and description from YouTube. Edit anything, then save.</p>
+      <h2 className="text-[20px] font-semibold text-white">Add from YouTube</h2>
+      <div className="mt-3 inline-flex rounded-lg border border-white/12 p-0.5">
+        {(["movie", "series"] as const).map((k) => (
+          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold capitalize ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k}</button>
+        ))}
+      </div>
+
+      {kind === "series" ? (
+        <div className="mt-5"><SeriesComposer token={accessToken ?? ""} source="youtube" /></div>
+      ) : (
+      <>
+      <p className="mt-4 text-[13px] text-white/50">Paste a link — we pull the title, thumbnail and description from YouTube. Edit anything, then save.</p>
 
       <form onSubmit={fetchMeta} className="mt-5 flex flex-col gap-2 sm:flex-row">
         <input className={input} type="url" required placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} />
@@ -124,6 +136,8 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
       {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 text-[13px] ${notice.tone === "error" ? "text-[#ff8f8f]" : "text-[#8fe3b4]"}`}>{notice.text}</p>}
 
       <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Custom poster images are stored on Cloudflare R2 (Cloudinary is the fallback). Video playback remains on YouTube.</p>
+      </>
+      )}
     </div>
   );
 }

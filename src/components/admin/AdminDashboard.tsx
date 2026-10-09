@@ -12,10 +12,9 @@ import AddVideo from "./AddVideo";
 import CloudflareUpload from "./CloudflareUpload";
 import EditContentModal from "./EditContentModal";
 import GenresPanel from "./GenresPanel";
-import SeriesBuilder from "./SeriesBuilder";
 import GrantCreditsDialog from "./GrantCreditsDialog";
 
-const TABS = ["Overview", "Users", "Content", "Series", "Genres", "Cost", "Add YouTube", "Add Cloudflare"] as const;
+const TABS = ["Overview", "Users", "Content", "Genres", "Cost", "Add YouTube", "Add Cloudflare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads `fn` once per token/dependency change; returns {data, error, loading, reload}. */
@@ -112,12 +111,21 @@ function ContentPanel({ token }: { token: string }) {
       {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
         <div className="overflow-x-auto rounded-xl border border-white/8">
           <table className="w-full border-collapse">
-            <thead className="bg-white/[0.03]"><tr><th className={th}>Title</th><th className={th}>Source</th><th className={th}>Visibility</th><th className={th}>Ready</th><th className={th}>Creator</th><th className={th}></th></tr></thead>
+            <thead className="bg-white/[0.03]"><tr><th className={th}>Title</th><th className={th}>Type</th><th className={th}>Source</th><th className={th}>Visibility</th><th className={th}>Ready</th><th className={th}>Creator</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((c: AdminUpload) => (
               <tr key={c.id} className="border-t border-white/5">
-                <td className={td}>{c.title}</td>
-                <td className={td}>{c.videoSource}</td>
-                <td className={td}>{c.visibility}</td>
+                <td className={td}>
+                  <div className="flex items-center gap-3">
+                    {c.posterUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={c.posterUrl} alt="" className="h-9 w-16 shrink-0 rounded object-cover" referrerPolicy="no-referrer" />
+                      : <div className="grid h-9 w-16 shrink-0 place-items-center rounded bg-white/5 text-[10px] text-white/30">—</div>}
+                    <span className="truncate">{c.title}</span>
+                  </div>
+                </td>
+                <td className={td}><span className="rounded-full bg-white/8 px-2 py-0.5 text-[11px] text-white/60">{c.type}</span></td>
+                <td className={td}><span className={`rounded-full px-2 py-0.5 text-[11px] ${c.videoSource === "YOUTUBE" ? "bg-[#d33]/15 text-[#ff9a9a]" : "bg-[#f6821f]/15 text-[#f6a95f]"}`}>{c.videoSource}</span></td>
+                <td className={td}><span className={c.visibility === "PUBLISHED" ? "text-[#8fe3b4]" : "text-white/55"}>{c.visibility}</span></td>
                 <td className={td}>{c.videoSource === "YOUTUBE" ? "—" : c.streamReady == null ? "—" : c.streamReady ? "Yes" : "No"}</td>
                 <td className={td}>{c.creator?.email ?? "—"}</td>
                 <td className={td}><div className="flex gap-1.5"><button onClick={() => setEditId(c.id)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button><DeleteTitleButton id={c.id} title={c.title} token={token} onDeleted={reload} /></div></td>
@@ -278,7 +286,6 @@ export default function AdminDashboard() {
         {!accessToken ? <Loading /> : tab === "Overview" ? <OverviewPanel token={accessToken} />
           : tab === "Users" ? <UsersPanel token={accessToken} />
           : tab === "Content" ? <ContentPanel token={accessToken} />
-          : tab === "Series" ? <SeriesBuilder token={accessToken} />
           : tab === "Genres" ? <GenresPanel token={accessToken} />
           : tab === "Cost" ? <CostPanel token={accessToken} />
           : tab === "Add YouTube" ? <AddVideo />

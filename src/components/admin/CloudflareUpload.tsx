@@ -8,10 +8,11 @@ import {
 } from "@/lib/admin";
 import type { ContentType } from "@/lib/content";
 import GenrePicker from "./GenrePicker";
+import SeriesComposer from "./SeriesComposer";
 
 const input = "h-11 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-white/30";
 const label = "mb-1 block text-[12px] font-medium text-white/55";
-const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
+const TYPES: ContentType[] = ["MOVIE", "SHORT"];
 
 type Fields = { title: string; tagline: string; description: string; posterUrl: string; rating: string; type: ContentType; isPremium: boolean };
 const EMPTY: Fields = { title: "", tagline: "", description: "", posterUrl: "", rating: "", type: "MOVIE", isPremium: false };
@@ -39,6 +40,7 @@ function CopyField({ caption, value }: { caption: string; value: string }) {
 
 export default function CloudflareUpload({ onCreated }: { onCreated?: () => void }) {
   const { accessToken } = useAuth();
+  const [kind, setKind] = useState<"movie" | "series">("movie");
   const [mode, setMode] = useState<Mode>("url");
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
@@ -144,8 +146,18 @@ export default function CloudflareUpload({ onCreated }: { onCreated?: () => void
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-[20px] font-semibold text-white">Add a Cloudflare video</h2>
-      <p className="mt-1 text-[13px] text-white/50">Enter the details and either paste a video URL or upload a file. It&apos;s copied to Cloudflare Stream, then you can copy its CDN link or publish it.</p>
+      <h2 className="text-[20px] font-semibold text-white">Add from Cloudflare</h2>
+      <div className="mt-3 inline-flex rounded-lg border border-white/12 p-0.5">
+        {(["movie", "series"] as const).map((k) => (
+          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold capitalize ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k}</button>
+        ))}
+      </div>
+
+      {kind === "series" ? (
+        <div className="mt-5"><SeriesComposer token={accessToken ?? ""} source="cloudflare" /></div>
+      ) : (
+      <>
+      <p className="mt-4 text-[13px] text-white/50">Enter the details and either paste a video URL or upload a file. It&apos;s copied to Cloudflare Stream, then you can copy its CDN link or publish it.</p>
 
       {stage !== "ready" && (
         <form onSubmit={save} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-[180px_1fr]">
@@ -205,6 +217,8 @@ export default function CloudflareUpload({ onCreated }: { onCreated?: () => void
       {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 text-[13px] ${notice.tone === "error" ? "text-[#ff8f8f]" : "text-[#8fe3b4]"}`}>{notice.text}</p>}
 
       <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Videos are stored on Cloudflare Stream and delivered over its CDN. Posters use Cloudflare R2.</p>
+      </>
+      )}
     </div>
   );
 }

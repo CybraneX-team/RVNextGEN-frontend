@@ -86,6 +86,8 @@ export type UpdateContentBody = {
   type?: ContentType;
   visibility?: "DRAFT" | "PRIVATE" | "PUBLISHED" | "ARCHIVED";
   categoryIds?: string[];
+  seasonNumber?: number;
+  episodeNumber?: number;
 };
 export const updateContent = (id: string, body: UpdateContentBody, token: string) =>
   apiFetch<ApiContent>(`content/${id}`, { method: "PATCH", body, token });
@@ -143,7 +145,8 @@ export const adminUsers = (token: string, q?: string, status?: "paid" | "free") 
   apiFetch<Paginated<AdminUser>>(`admin/users${listQuery({ q, status })}`, { token });
 
 export type AdminUpload = {
-  id: string; title: string; source: "direct" | "generated"; videoSource: "CLOUDFLARE" | "YOUTUBE";
+  id: string; title: string; type: ContentType; posterUrl: string | null;
+  source: "direct" | "generated"; videoSource: "CLOUDFLARE" | "YOUTUBE";
   youtubeId: string | null; visibility: string; creator: { id: string; email: string } | null;
   createdAt: string; updatedAt: string; streamUid: string | null; streamReady: boolean | null;
 };
