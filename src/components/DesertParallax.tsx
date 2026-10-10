@@ -130,6 +130,8 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const restoredStage = useRef<number | null>(null);
   const card = cardRevealed ? 1 : 0;
   const morphSurface = useRef<HTMLDivElement>(null);
+  const [viewportRevision, setViewportRevision] = useState(0);
+  const resized = useRef(false);
   const previousSize = useRef<{ width: number; height: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -137,22 +139,62 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
     if (!surface) return;
     const width = surface.offsetWidth;
     const height = surface.offsetHeight;
-    const previous = previousSize.current;
-    // Lay out the destination once; transform its composited layers instead of
-    // resizing and repainting the blurred artwork on every animation frame.
-    const animation = previous && width && height && !reducedMotion
-      ? surface.animate([
-        { transform: `scale(${previous.width / width}, ${previous.height / height})` },
-        { transform: "scale(1, 1)" },
-      ], { duration: 700, easing: "cubic-bezier(.22,1,.36,1)" })
-      : null;
+    const previous = resized.current ? null : previousSize.current;
+    resized.current = false;
+    const viewportWidth = scroller.current?.clientWidth || width;
+    const viewportHeight = scroller.current?.clientHeight || height;
+    const from = previous ?? { width, height };
+    const timing = { duration: 700, easing: "cubic-bezier(.22,1,.36,1)" };
+    const animations: Animation[] = [];
+    const animate = (node: HTMLElement, frames: Keyframe[]) => {
+      node.style.transform = String(frames[frames.length - 1].transform);
+      if (previous && !reducedMotion) animations.push(node.animate(frames, timing));
+    };
+    // Only the clipping shell changes aspect ratio. Counter-scale the fixed
+    // artwork and typography so neither stretches or reflows during the morph.
+    animate(surface, [
+      { transform: `scale(${from.width / width}, ${from.height / height})` },
+      { transform: "scale(1, 1)" },
+    ]);
+    const artFrames: Keyframe[] = [];
+    const titleFrames: Keyframe[] = [];
+    for (let step = 0; step <= 60; step++) {
+      const t = step / 60;
+      const visualWidth = from.width + (width - from.width) * t;
+      const visualHeight = from.height + (height - from.height) * t;
+      const sx = visualWidth / width;
+      const sy = visualHeight / height;
+      const cover = Math.max(visualWidth / viewportWidth, visualHeight / viewportHeight);
+      const textScale = visualWidth / viewportWidth;
+      const startTop = from.width >= viewportWidth - 1 ? 104 : 24;
+      const endTop = cardRevealed ? 24 : 104;
+      artFrames.push({ offset: t, transform: `translate(-50%, -50%) scale(${cover / sx}, ${cover / sy})` });
+      titleFrames.push({ offset: t, transform: `translate(-50%, ${(startTop + (endTop - startTop) * t) / sy}px) scale(${textScale / sx}, ${textScale / sy})` });
+    }
+    surface.querySelectorAll<HTMLElement>("[data-morph-art]").forEach(node => animate(node, artFrames));
+    surface.querySelectorAll<HTMLElement>("[data-morph-title]").forEach(node => animate(node, titleFrames));
     return () => {
-      // A reversal starts from the current visual size, without snapping.
       const matrix = new DOMMatrixReadOnly(getComputedStyle(surface).transform);
       previousSize.current = { width: width * matrix.a, height: height * matrix.d };
-      animation?.cancel();
+      animations.forEach(animation => animation.cancel());
     };
-  }, [cardRevealed, reducedMotion]);
+  }, [cardRevealed, reducedMotion, viewportRevision]);
+
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    let width = root.clientWidth;
+    let height = root.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (root.clientWidth === width && root.clientHeight === height) return;
+      width = root.clientWidth;
+      height = root.clientHeight;
+      resized.current = true;
+      setViewportRevision(value => value + 1);
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const section = upcomingSection.current;
@@ -310,8 +352,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const episodeRowHeight = upcomingEpisodes.length ? "calc(min(42.666667dvh, 231.111111px) + 56px)" : "140px";
   const expandedListTop = `calc(100% - max(7dvh, calc(env(safe-area-inset-bottom) + 24px)) - ${episodeRowHeight})`;
   const motion = 1;
-  const drift = 0;
-  const tilt = { x: 0, y: 0 };
+
   const featuredVisible = card >= .999;
   useEffect(() => {
     onFeaturedReveal?.(featuredVisible);
@@ -348,15 +389,15 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
           }}>
             <div ref={morphSurface} className="absolute inset-0 origin-center will-change-transform">
             {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
-            <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
-            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
-              top: "calc(24px + env(safe-area-inset-top))",
-              opacity: titleReveal,
-              transform: `translate3d(${tilt.x * .45 * drift}px,${(1 - card) * 80}px,0)`,
-            }}>
-              <p className="mb-3 text-[clamp(11px,3cqw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
-              <h2 className="m-0 whitespace-nowrap font-serif text-[min(8cqw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
+            <div data-morph-art className="absolute top-1/2 left-1/2 h-dvh w-screen origin-center will-change-transform">
+              <SeriesArtwork index={index} focus={focus} drift={reducedMotion ? 0 : 1} motion={motion} gyro />
+            </div>
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent transition-opacity duration-700 motion-reduce:transition-none" style={{ opacity: .12 + caption * .88 }} />
+            <div data-morph-title className="pointer-events-none absolute top-0 left-1/2 w-screen origin-top text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{ opacity: titleReveal }}>
+            <div className="px-7 pt-[env(safe-area-inset-top)]" style={{ transform: reducedMotion ? undefined : "translate3d(calc(var(--gyro-x, 0px) * .35), calc(var(--gyro-y, 0px) * .35), 0)" }}>
+              <p className="mb-3 text-[clamp(11px,3vw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
+              <h2 className="m-0 whitespace-nowrap font-serif text-[min(8vw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
+            </div>
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
               <h1 className="text-[22px] font-bold tracking-[-.04em] text-white sm:text-[30px]">Episode 01</h1>
