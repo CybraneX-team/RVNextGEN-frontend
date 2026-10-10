@@ -129,9 +129,8 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
   const [episodesExpanded, setEpisodesExpanded] = useState(false);
   const [recentlyExpanded, setRecentlyExpanded] = useState(false);
   const [cardRevealed, setCardRevealed] = useState(false);
-  const [card, setCard] = useState(0);
-  const cardValue = useRef(0);
   const restoredReturnScroll = useRef<number | null>(null);
+  const card = cardRevealed ? 1 : 0;
 
   useEffect(() => {
     const section = upcomingSection.current;
@@ -156,23 +155,6 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
       });
     }
   }
-
-  useEffect(() => {
-    const from = cardValue.current;
-    const target = cardRevealed ? 1 : 0;
-    let frame = 0;
-    let started: number | undefined;
-    const animate = (time: number) => {
-      started ??= time;
-      const elapsed = reducedMotion ? 1 : Math.min(1, (time - started) / 620);
-      const eased = 1 - Math.pow(1 - elapsed, 3);
-      cardValue.current = from + (target - from) * eased;
-      setCard(cardValue.current);
-      if (elapsed < 1) frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
-  }, [cardRevealed, reducedMotion]);
 
   useLayoutEffect(() => {
     const element = scroller.current;
@@ -293,10 +275,8 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
         const restoredCard = restoredProgress >= .52 ? 1 : 0;
         setProgress(restoredProgress);
         setCardRevealed(restoredCard === 1);
-        // Keep the saved scroll, but animate the hero back into its featured
-        // card on return instead of snapping directly to its compact size.
-        cardValue.current = 0;
-        setCard(0);
+        // The card transition is handled by CSS, so returning from Profile
+        // animates at the same speed as scrolling without a React render loop.
         setEpisodesExpanded(savedScroll >= travel + 8);
         setRecentlyExpanded(savedScroll >= travel + element.clientHeight * .3);
         sessionStorage.removeItem("gyro-profile-return-scroll");
@@ -358,8 +338,8 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
     <div ref={scrollContent}>
       <div ref={parallaxTrack} className="relative h-[calc(914dvh+48px)]">
         <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)]" style={{ opacity: card }} />
-          <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-transform duration-[1400ms] ease-[cubic-bezier(.45,0,.2,1)] motion-reduce:transition-none" onPointerDown={event => {
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)] transition-opacity duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: card }} />
+          <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-[width,height,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" onPointerDown={event => {
             swipeStart.current = { x: event.clientX, y: event.clientY };
             swiped.current = false;
           }} onPointerUp={event => {
@@ -383,10 +363,10 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
               ? `translate(calc(-50vw + 32px + min(16vw, 72px, 7.875dvh)), calc(-50dvh + ${compactTop} + min(28.444444vw, 128px, 14dvh))) scale(.40)`
               : `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .44})`,
           }}>
-            {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
+            {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity,border-radius,box-shadow] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
             <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
-            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
+            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] transition-[top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
               top: `calc(${104 - card * 80}px + env(safe-area-inset-top))`,
               opacity: titleReveal,
               transform: `translate3d(${tilt.x * .45 * drift}px,${tilt.y * .45 * drift + (1 - titleReveal) * 24 * motion}px,0)`,
@@ -394,7 +374,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
               <p className="mb-3 text-[clamp(11px,3cqw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
               <h2 className="m-0 whitespace-nowrap font-serif text-[min(8cqw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
             </div>
-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
               <h1 className="text-[22px] font-bold tracking-[-.04em] text-white sm:text-[30px]">Episode 01</h1>
               <span aria-hidden="true" className="grid size-[40px] shrink-0 place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-md"><PlayIcon className="size-[14px]" /></span>
             </div>
@@ -426,7 +406,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: 1 - phase(progress, 0, .12) }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-[1400ms] ease-[cubic-bezier(.45,0,.2,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? `calc(${compactTop} + max(${compactHeight}, 224px) + 24px)` : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
+          <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? `calc(${compactTop} + max(${compactHeight}, 224px) + 24px)` : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
               <div ref={upcomingSection} className="relative">
                 <div className="mb-3 flex items-center justify-between gap-3 px-8">
