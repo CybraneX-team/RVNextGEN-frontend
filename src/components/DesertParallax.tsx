@@ -164,7 +164,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
     let started: number | undefined;
     const animate = (time: number) => {
       started ??= time;
-      const elapsed = reducedMotion ? 1 : Math.min(1, (time - started) / 850);
+      const elapsed = reducedMotion ? 1 : Math.min(1, (time - started) / 620);
       const eased = 1 - Math.pow(1 - elapsed, 3);
       cardValue.current = from + (target - from) * eased;
       setCard(cardValue.current);
@@ -293,8 +293,10 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
         const restoredCard = restoredProgress >= .52 ? 1 : 0;
         setProgress(restoredProgress);
         setCardRevealed(restoredCard === 1);
-        cardValue.current = restoredCard;
-        setCard(restoredCard);
+        // Keep the saved scroll, but animate the hero back into its featured
+        // card on return instead of snapping directly to its compact size.
+        cardValue.current = 0;
+        setCard(0);
         setEpisodesExpanded(savedScroll >= travel + 8);
         setRecentlyExpanded(savedScroll >= travel + element.clientHeight * .3);
         sessionStorage.removeItem("gyro-profile-return-scroll");
