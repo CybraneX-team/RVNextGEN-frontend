@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
 import { GYRO_SERIES, SeriesArtwork } from "./GyroSeries";
@@ -131,6 +131,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
   const [cardRevealed, setCardRevealed] = useState(false);
   const [card, setCard] = useState(0);
   const cardValue = useRef(0);
+  const restoredReturnScroll = useRef<number | null>(null);
 
   useEffect(() => {
     const section = upcomingSection.current;
@@ -173,7 +174,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
     return () => cancelAnimationFrame(frame);
   }, [cardRevealed, reducedMotion]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = scroller.current;
     const content = scrollContent.current;
     if (!element || !content) return;
@@ -281,12 +282,19 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
     window.addEventListener("gyro:profile-open", saveReturnPosition);
     window.addEventListener("resize", update);
     try {
-      const savedScroll = Number(sessionStorage.getItem("gyro-profile-return-scroll"));
+      const savedScroll = restoredReturnScroll.current ?? Number(sessionStorage.getItem("gyro-profile-return-scroll"));
       if (Number.isFinite(savedScroll) && savedScroll > 0) {
+        restoredReturnScroll.current = savedScroll;
         const track = parallaxTrack.current;
         const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight * 2 - 48) : 1;
         element.scrollTop = savedScroll;
         stage = savedScroll >= travel + 8 ? "released" : "before";
+        const restoredProgress = Math.min(1, Math.max(0, savedScroll / travel * .84));
+        const restoredCard = restoredProgress >= .52 ? 1 : 0;
+        setProgress(restoredProgress);
+        setCardRevealed(restoredCard === 1);
+        cardValue.current = restoredCard;
+        setCard(restoredCard);
         setEpisodesExpanded(savedScroll >= travel + 8);
         setRecentlyExpanded(savedScroll >= travel + element.clientHeight * .3);
         sessionStorage.removeItem("gyro-profile-return-scroll");
