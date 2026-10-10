@@ -79,7 +79,7 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
   </div>;
 }
 
-export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: number; y: number }; onFeaturedReveal?: (visible: boolean) => void }) {
+export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?: (visible: boolean) => void }) {
   const [seriesIndex, setSeriesIndex] = useState(0);
   const series = GYRO_SERIES[seriesIndex];
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
@@ -116,20 +116,18 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
     setPlaying(null);
   }, [playing, recentEpisodes, series]);
   const scroller = useRef<HTMLDivElement>(null);
-  const scrollContent = useRef<HTMLDivElement>(null);
-  const parallaxTrack = useRef<HTMLDivElement>(null);
   const episodeCarousel = useRef<HTMLDivElement>(null);
   const upcomingSection = useRef<HTMLDivElement>(null);
   const recentlyWatchedSection = useRef<HTMLElement>(null);
-  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
   const [savedSeries, setSavedSeries] = useState<Record<string, boolean>>({});
   const savedFeatured = savedSeries[series.id] ?? false;
-  const [episodesExpanded, setEpisodesExpanded] = useState(false);
-  const [recentlyExpanded, setRecentlyExpanded] = useState(false);
-  const [cardRevealed, setCardRevealed] = useState(false);
-  const restoredReturnScroll = useRef<number | null>(null);
+  const episodesExpanded = stage >= 2;
+  const recentlyExpanded = stage === 3;
+  const cardRevealed = stage >= 1;
+  const restoredStage = useRef<number | null>(null);
   const card = cardRevealed ? 1 : 0;
   const morphSurface = useRef<HTMLDivElement>(null);
   const previousSize = useRef<{ width: number; height: number } | null>(null);
@@ -182,133 +180,96 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
 
   useLayoutEffect(() => {
     const element = scroller.current;
-    const content = scrollContent.current;
-    if (!element || !content) return;
+    if (!element) return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const updatePreference = () => setReducedMotion(preference.matches);
     updatePreference();
     preference.addEventListener("change", updatePreference);
-    let frame = 0;
-    let stage: "before" | "holding" | "ready" | "released" = "before";
-    let holdAt = 0;
-    let holdUntil = 0;
-    let transitionUntil = 0;
-    let lastInput = 0;
-    let touchActive = false;
-    let touchStartY = 0;
-    let freshTouch = false;
-    let settleTimer = 0;
-    const armNextGesture = () => {
-      window.clearTimeout(settleTimer);
-      if (stage !== "holding") return;
-      const remaining = Math.max(holdUntil - performance.now(), 220 - (performance.now() - lastInput));
-      if (remaining > 0 || touchActive) {
-        settleTimer = window.setTimeout(armNextGesture, Math.max(80, remaining));
-      } else stage = "ready";
+    let current = restoredStage.current ?? 0;
+    try {
+      const saved = sessionStorage.getItem("gyro-profile-return-stage");
+      if (saved !== null) current = Math.max(0, Math.min(3, Number(saved) || 0));
+      sessionStorage.removeItem("gyro-profile-return-stage");
+    } catch { /* Keep the initial stage when storage is unavailable. */ }
+    setStage(current);
+    let lockedUntil = 0;
+    let lastWheel = -Infinity;
+    let wheelAmount = 0;
+    let wheelConsumed = false;
+    let touch: { x: number; y: number; consumed: boolean } | null = null;
+    const advance = (direction: number) => {
+      if (performance.now() < lockedUntil) return;
+      const next = Math.max(0, Math.min(3, current + direction));
+      if (next === current) return;
+      current = next;
+      setStage(next);
+      lockedUntil = performance.now() + (preference.matches ? 0 : 720);
     };
-    const release = () => {
-      stage = "released";
-      transitionUntil = performance.now() + (preference.matches ? 0 : 1400);
-      setRecentlyExpanded(true);
+    const isControl = (target: EventTarget | null) => target instanceof Element &&
+      Boolean(target.closest('dialog, [role="dialog"], [role="menu"], input, textarea, select, video, iframe'));
+    const canScrollInside = (target: EventTarget | null, direction: number) => {
+      let node = target instanceof Element ? target : null;
+      while (node && node !== element) {
+        if (node instanceof HTMLElement && /auto|scroll/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight + 1) {
+          if (direction > 0 ? node.scrollTop + node.clientHeight < node.scrollHeight - 1 : node.scrollTop > 1) return true;
+        }
+        node = node.parentElement;
+      }
+      return false;
     };
     const onWheel = (event: WheelEvent) => {
-      if (performance.now() < transitionUntil) { event.preventDefault(); return; }
-      const fresh = performance.now() - lastInput > 220;
-      lastInput = performance.now();
-      if (event.deltaY <= 0 || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-      if (stage === "ready" && fresh) { event.preventDefault(); release(); }
-      else if (stage === "holding" || stage === "ready") event.preventDefault();
-      armNextGesture();
+      if (event.ctrlKey || isControl(event.target) || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      const now = performance.now();
+      const fresh = now - lastWheel > 180;
+      lastWheel = now;
+      if (canScrollInside(event.target, Math.sign(event.deltaY))) return;
+      event.preventDefault();
+      if (fresh) { wheelAmount = 0; wheelConsumed = false; }
+      if (now < lockedUntil || wheelConsumed) { wheelConsumed = true; return; }
+      wheelAmount += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1);
+      if (Math.abs(wheelAmount) >= 18) {
+        wheelConsumed = true;
+        advance(Math.sign(wheelAmount));
+      }
     };
     const onTouchStart = (event: TouchEvent) => {
-      touchActive = true;
-      freshTouch = stage === "ready";
-      touchStartY = event.touches[0]?.clientY ?? 0;
-      lastInput = performance.now();
+      const point = event.touches[0];
+      touch = point && event.touches.length === 1 ? { x: point.clientX, y: point.clientY, consumed: performance.now() < lockedUntil } : null;
     };
     const onTouchMove = (event: TouchEvent) => {
-      if (performance.now() < transitionUntil) { event.preventDefault(); return; }
-      lastInput = performance.now();
-      if (touchStartY - (event.touches[0]?.clientY ?? touchStartY) <= 12) return;
-      if (stage === "ready" && freshTouch) { event.preventDefault(); release(); }
-      else if (stage === "holding" || stage === "ready") event.preventDefault();
+      const point = event.touches[0];
+      if (!touch || !point || event.touches.length !== 1 || isControl(event.target)) return;
+      const dx = touch.x - point.clientX;
+      const dy = touch.y - point.clientY;
+      if (Math.abs(dx) >= Math.abs(dy) || canScrollInside(event.target, Math.sign(dy))) return;
+      event.preventDefault();
+      if (!touch.consumed && Math.abs(dy) >= 30) {
+        touch.consumed = true;
+        swiped.current = true;
+        advance(Math.sign(dy));
+      }
     };
-    const onTouchEnd = () => {
-      touchActive = false;
-      lastInput = performance.now();
-      armNextGesture();
-    };
+    const onTouchEnd = () => { touch = null; };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target !== element || !["ArrowDown", "PageDown", " "].includes(event.key)) return;
-      if (performance.now() < transitionUntil) { event.preventDefault(); return; }
-      if (stage === "ready" && !event.repeat) { event.preventDefault(); release(); }
-      else if (stage === "holding" || stage === "ready") event.preventDefault();
+      if (event.defaultPrevented || isControl(event.target) || (event.target instanceof Element && event.target.closest('button, a'))) return;
+      const direction = ["ArrowDown", "PageDown"].includes(event.key) || (event.key === " " && !event.shiftKey) ? 1
+        : ["ArrowUp", "PageUp"].includes(event.key) || (event.key === " " && event.shiftKey) ? -1 : 0;
+      if (!direction || canScrollInside(event.target, direction)) return;
+      event.preventDefault();
+      if (!event.repeat) advance(direction);
     };
     const saveReturnPosition = () => {
-      try { sessionStorage.setItem("gyro-profile-return-scroll", String(element.scrollTop)); } catch { /* Browser storage may be disabled. */ }
+      try { sessionStorage.setItem("gyro-profile-return-stage", String(current)); } catch { /* Storage may be disabled. */ }
     };
-    const update = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const track = parallaxTrack.current;
-        // Preserve the full-card pause, then use a small gesture to trigger
-        // a complete timed transition instead of scrubbing it with scroll.
-        // Reserve the final viewport of travel for the compact details layout.
-        const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight * 2 - 48) : 1;
-        const nextProgress = Math.min(1, Math.max(0, element.scrollTop / travel * .84));
-        setProgress(nextProgress);
-        if (nextProgress >= .52) setCardRevealed(true);
-        else if (nextProgress <= .5) setCardRevealed(false);
-        if (element.scrollTop >= travel + 8) setEpisodesExpanded(true);
-        else if (element.scrollTop <= travel - 24) setEpisodesExpanded(false);
-        if (stage === "before" && element.scrollTop >= travel + 8) {
-          stage = "holding";
-          holdAt = travel + 8;
-          holdUntil = performance.now() + (preference.matches ? 250 : 1000);
-          armNextGesture();
-        }
-        if ((stage === "holding" || stage === "ready" || performance.now() < transitionUntil) && element.scrollTop > holdAt) {
-          element.scrollTop = holdAt;
-        }
-        if (element.scrollTop <= travel - 24) {
-          stage = "before";
-          window.clearTimeout(settleTimer);
-          setRecentlyExpanded(false);
-        }
-      });
-    };
-    element.addEventListener("scroll", update, { passive: true });
     element.addEventListener("wheel", onWheel, { passive: false });
     element.addEventListener("touchstart", onTouchStart, { passive: true });
     element.addEventListener("touchmove", onTouchMove, { passive: false });
-    element.addEventListener("touchend", onTouchEnd, { passive: true });
-    element.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    element.addEventListener("touchend", onTouchEnd);
+    element.addEventListener("touchcancel", onTouchEnd);
     element.addEventListener("keydown", onKeyDown);
     window.addEventListener("gyro:profile-open", saveReturnPosition);
-    window.addEventListener("resize", update);
-    try {
-      const savedScroll = restoredReturnScroll.current ?? Number(sessionStorage.getItem("gyro-profile-return-scroll"));
-      if (Number.isFinite(savedScroll) && savedScroll > 0) {
-        restoredReturnScroll.current = savedScroll;
-        const track = parallaxTrack.current;
-        const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight * 2 - 48) : 1;
-        element.scrollTop = savedScroll;
-        stage = savedScroll >= travel + 8 ? "released" : "before";
-        const restoredProgress = Math.min(1, Math.max(0, savedScroll / travel * .84));
-        const restoredCard = restoredProgress >= .52 ? 1 : 0;
-        setProgress(restoredProgress);
-        setCardRevealed(restoredCard === 1);
-        // The card transition is handled by CSS, so returning from Profile
-        // animates at the same speed as scrolling without a React render loop.
-        setEpisodesExpanded(savedScroll >= travel + 8);
-        setRecentlyExpanded(savedScroll >= travel + element.clientHeight * .3);
-        sessionStorage.removeItem("gyro-profile-return-scroll");
-      }
-    } catch { /* Start at the top if browser storage is disabled. */ }
-    update();
     return () => {
-      element.removeEventListener("scroll", update);
+      restoredStage.current = current;
       element.removeEventListener("wheel", onWheel);
       element.removeEventListener("touchstart", onTouchStart);
       element.removeEventListener("touchmove", onTouchMove);
@@ -316,16 +277,13 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
       element.removeEventListener("touchcancel", onTouchEnd);
       element.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("gyro:profile-open", saveReturnPosition);
-      window.clearTimeout(settleTimer);
-      window.removeEventListener("resize", update);
-      cancelAnimationFrame(frame);
       preference.removeEventListener("change", updatePreference);
     };
   }, []);
 
-  const focus = phase(progress, .04, .55);
+  const focus = 1;
   const caption = phase(card, .5, 1);
-  const titleReveal = phase(progress, .06, .3);
+  const titleReveal = 1;
   const featuredLift = episodesExpanded && card >= .999 ? 1 : 0;
   const carouselReveal = featuredLift;
   const compact = Boolean(featuredLift && recentlyExpanded);
@@ -351,17 +309,18 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
   const compactHeight = "min(56.888889vw, 256px, 28dvh)";
   const episodeRowHeight = upcomingEpisodes.length ? "calc(min(42.666667dvh, 231.111111px) + 56px)" : "140px";
   const expandedListTop = `calc(100% - max(7dvh, calc(env(safe-area-inset-bottom) + 24px)) - ${episodeRowHeight})`;
-  const motion = reducedMotion ? 0 : 1;
-  const drift = (1 - card * .65) * motion;
+  const motion = 1;
+  const drift = 0;
+  const tilt = { x: 0, y: 0 };
   const featuredVisible = card >= .999;
   useEffect(() => {
     onFeaturedReveal?.(featuredVisible);
   }, [featuredVisible, onFeaturedReveal]);
 
-  return <div ref={scroller} tabIndex={0} aria-label="Desert parallax followed by episodes. Scroll to reveal the episode card and episode list." className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-    <div ref={scrollContent}>
-      <div ref={parallaxTrack} className="relative h-[calc(914dvh+48px)]">
-        <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
+  return <div ref={scroller} tabIndex={0} aria-label="Series viewer. Scroll or swipe once to reveal the featured card, more episodes, then recently watched." data-stage={stage} className="absolute inset-0 overflow-hidden overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div>
+      <div className="relative h-dvh">
+        <div className="relative flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)] transition-opacity duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: card }} />
           <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" onPointerDown={event => {
             swipeStart.current = { x: event.clientX, y: event.clientY };
@@ -391,10 +350,10 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
             {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
             <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
-            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
-              top: `calc(${104 - card * 80}px + env(safe-area-inset-top))`,
+            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
+              top: "calc(24px + env(safe-area-inset-top))",
               opacity: titleReveal,
-              transform: `translate3d(${tilt.x * .45 * drift}px,${tilt.y * .45 * drift + (1 - titleReveal) * 24 * motion}px,0)`,
+              transform: `translate3d(${tilt.x * .45 * drift}px,${(1 - card) * 80}px,0)`,
             }}>
               <p className="mb-3 text-[clamp(11px,3cqw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
               <h2 className="m-0 whitespace-nowrap font-serif text-[min(8cqw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
@@ -414,7 +373,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
             </button>
           </div>
           </div>
-          <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none" style={{ top: compactTop, left: `calc(32px + ${compactWidth} + 16px)`, opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, transitionDelay: compact && !reducedMotion ? "700ms" : "0ms", pointerEvents: compact ? "auto" : "none" }}>
+          <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none" style={{ top: compactTop, left: `calc(32px + ${compactWidth} + 16px)`, opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, pointerEvents: compact ? "auto" : "none" }}>
             <p className="mb-2 text-[10px] font-semibold tracking-[.2em] text-[#f4d6b0]/75">RVNEXTGEN ORIGINAL</p>
             <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">{series.lead} <em className="font-normal">{series.emphasis}</em> {series.end}</h2>
             <p className="mt-2 text-[11px] font-medium text-white/55 sm:text-sm">Episode 01</p>
@@ -429,7 +388,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
               </button>
             </div>
           </aside>
-          <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: 1 - phase(progress, 0, .12) }}>
+          <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: stage === 0 ? 1 : 0 }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
           <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? `calc(${compactTop} + max(${compactHeight}, 224px) + 24px)` : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
@@ -448,7 +407,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
                   <svg aria-hidden="true" className="size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3v13m-4-4 4 4 4-4" /></svg>
                 </div>
               </div>
-              <section ref={recentlyWatchedSection} aria-label="Recently watched" aria-hidden={!compact} inert={!compact} className="relative mx-auto w-full max-w-5xl pt-8 pb-[max(100px,calc(env(safe-area-inset-bottom)+80px))] transition-[opacity,transform] duration-[1000ms] ease-out motion-reduce:transition-none" style={{ opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 28}px)`, visibility: compact ? "visible" : "hidden", transitionDelay: compact && !reducedMotion ? "350ms" : "0ms" }}>
+              <section ref={recentlyWatchedSection} aria-label="Recently watched" aria-hidden={!compact} inert={!compact} className="relative mx-auto w-full max-w-5xl pt-8 pb-[max(100px,calc(env(safe-area-inset-bottom)+80px))] transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 28}px)`, visibility: compact ? "visible" : "hidden" }}>
                 <h3 className="mb-4 px-8 text-[13px] font-semibold tracking-[.04em] text-white/85">Recently watched</h3>
                 {visibleRecentEpisodes.length > 0 ? <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
                   {visibleRecentEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={setPlaying} />)}
