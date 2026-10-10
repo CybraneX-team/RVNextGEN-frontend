@@ -131,6 +131,30 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
   const [cardRevealed, setCardRevealed] = useState(false);
   const restoredReturnScroll = useRef<number | null>(null);
   const card = cardRevealed ? 1 : 0;
+  const morphSurface = useRef<HTMLDivElement>(null);
+  const previousSize = useRef<{ width: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const surface = morphSurface.current;
+    if (!surface) return;
+    const width = surface.offsetWidth;
+    const height = surface.offsetHeight;
+    const previous = previousSize.current;
+    // Lay out the destination once; transform its composited layers instead of
+    // resizing and repainting the blurred artwork on every animation frame.
+    const animation = previous && width && height && !reducedMotion
+      ? surface.animate([
+        { transform: `scale(${previous.width / width}, ${previous.height / height})` },
+        { transform: "scale(1, 1)" },
+      ], { duration: 700, easing: "cubic-bezier(.22,1,.36,1)" })
+      : null;
+    return () => {
+      // A reversal starts from the current visual size, without snapping.
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(surface).transform);
+      previousSize.current = { width: width * matrix.a, height: height * matrix.d };
+      animation?.cancel();
+    };
+  }, [cardRevealed, reducedMotion]);
 
   useEffect(() => {
     const section = upcomingSection.current;
@@ -339,7 +363,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
       <div ref={parallaxTrack} className="relative h-[calc(914dvh+48px)]">
         <div className="sticky top-0 flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,#674029_0%,#241913_40%,#100e0c_75%)] transition-opacity duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: card }} />
-          <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-[width,height,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" onPointerDown={event => {
+          <div aria-label="Featured series carousel" className="relative shrink-0 touch-pan-y transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" onPointerDown={event => {
             swipeStart.current = { x: event.clientX, y: event.clientY };
             swiped.current = false;
           }} onPointerUp={event => {
@@ -363,10 +387,11 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
               ? `translate(calc(-50vw + 32px + min(16vw, 72px, 7.875dvh)), calc(-50dvh + ${compactTop} + min(28.444444vw, 128px, 14dvh))) scale(.40)`
               : `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .44})`,
           }}>
-            {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity,border-radius,box-shadow] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
+            <div ref={morphSurface} className="absolute inset-0 origin-center will-change-transform">
+            {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
             <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
-            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] transition-[top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
+            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
               top: `calc(${104 - card * 80}px + env(safe-area-inset-top))`,
               opacity: titleReveal,
               transform: `translate3d(${tilt.x * .45 * drift}px,${tilt.y * .45 * drift + (1 - titleReveal) * 24 * motion}px,0)`,
@@ -380,6 +405,7 @@ export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: 
             </div>
             {card >= .999 && <button type="button" aria-label={index === seriesIndex ? `Play ${entry.title} Episode 01` : `View series ${index + 1}: ${entry.title}`} onClick={() => { if (index !== seriesIndex) selectSeries(index); else if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
           </article>)}
+            </div>
           <div aria-hidden={!canSwipeSeries} inert={!canSwipeSeries} className="absolute inset-x-0 top-full mt-5 flex items-center justify-center gap-3 text-[12px] text-white/60 transition-opacity duration-300" style={{ opacity: canSwipeSeries ? 1 : 0 }}>
             <button type="button" onClick={() => selectSeries(seriesIndex === 0 ? 1 : 0)} className="flex min-h-8 items-center gap-2 rounded-full px-3 hover:text-white focus-visible:outline-2 focus-visible:outline-white">
               {seriesIndex === 1 && <span aria-hidden="true">←</span>}
