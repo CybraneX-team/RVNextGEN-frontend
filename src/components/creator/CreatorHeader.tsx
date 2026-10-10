@@ -21,15 +21,16 @@ export default function CreatorHeader({ reloadKey = 0, balance: externalBalance 
   }, [accessToken, reloadKey, externalBalance]);
 
   return (
-    <header className="flex flex-wrap items-center gap-4 border-b border-white/8 px-6 py-4">
-      <Link href="/creator" className="text-[18px] font-bold tracking-[-0.5px]"><span className="text-[#c8e0d5] italic">s</span> creator lab</Link>
-      <span className="hidden text-[13px] text-white/45 sm:inline">{user?.email}</span>
-      <div className="ml-auto flex items-center gap-3">
-        <span className="rounded-full border border-[#2f7d5b]/40 bg-[#2f7d5b]/15 px-3 py-1.5 text-[13px] font-medium text-[#c8e0d5]" title="Your generation credits">
-          {balance == null ? "…" : `${balance.toLocaleString()} credits`}
-        </span>
-        <Link href="/" className="rounded-lg border border-white/12 px-3 py-1.5 text-[13px] text-white/75 hover:bg-white/5">Back to app</Link>
-        <button onClick={() => void signOut()} className="rounded-lg border border-white/12 px-3 py-1.5 text-[13px] text-white/75 hover:bg-white/5">Log out</button>
+    <header className="sticky top-0 z-20 border-b border-white/[.07] bg-[#0e0d0f]/85 px-4 py-3 backdrop-blur-xl sm:px-6 sm:py-4">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2">
+        <Link href="/creator" className="inline-flex items-center gap-2 text-[16px] font-semibold tracking-[-.35px] sm:text-[18px]"><span className="grid size-8 place-items-center rounded-xl border border-[#e5b27f]/20 bg-[#e5b27f]/[.08] font-serif text-[18px] italic text-[#e5b27f]">s</span><span>creator <span className="font-normal text-white/55">lab</span></span></Link>
+        <span className="hidden truncate text-[12px] text-white/40 md:inline">{user?.email}</span>
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          <span className="rounded-full border border-[#e5b27f]/20 bg-[#e5b27f]/[.07] px-2.5 py-1.5 text-[11px] font-medium text-[#e7bd94] sm:px-3 sm:text-[12px]" title="Your generation credits">
+            {balance == null ? "…" : `${balance.toLocaleString()} credits`}
+          </span>
+          <Link href="/" className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-white/65 transition-colors hover:border-white/20 hover:bg-white/5 sm:px-3 sm:text-[12px]">Back to app</Link>
+        </div>
       </div>
     </header>
   );

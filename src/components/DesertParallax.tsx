@@ -79,7 +79,7 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
   </div>;
 }
 
-export default function DesertParallax({ tilt }: { tilt: { x: number; y: number } }) {
+export default function DesertParallax({ tilt, onFeaturedReveal }: { tilt: { x: number; y: number }; onFeaturedReveal?: (visible: boolean) => void }) {
   const [seriesIndex, setSeriesIndex] = useState(0);
   const series = GYRO_SERIES[seriesIndex];
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
@@ -237,6 +237,9 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
       if (stage === "ready" && !event.repeat) { event.preventDefault(); release(); }
       else if (stage === "holding" || stage === "ready") event.preventDefault();
     };
+    const saveReturnPosition = () => {
+      try { sessionStorage.setItem("gyro-profile-return-scroll", String(element.scrollTop)); } catch { /* Browser storage may be disabled. */ }
+    };
     const update = () => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
@@ -275,7 +278,20 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
     element.addEventListener("touchend", onTouchEnd, { passive: true });
     element.addEventListener("touchcancel", onTouchEnd, { passive: true });
     element.addEventListener("keydown", onKeyDown);
+    window.addEventListener("gyro:profile-open", saveReturnPosition);
     window.addEventListener("resize", update);
+    try {
+      const savedScroll = Number(sessionStorage.getItem("gyro-profile-return-scroll"));
+      if (Number.isFinite(savedScroll) && savedScroll > 0) {
+        const track = parallaxTrack.current;
+        const travel = track ? Math.max(1, track.offsetHeight - element.clientHeight * 2 - 48) : 1;
+        element.scrollTop = savedScroll;
+        stage = savedScroll >= travel + 8 ? "released" : "before";
+        setEpisodesExpanded(savedScroll >= travel + 8);
+        setRecentlyExpanded(savedScroll >= travel + element.clientHeight * .3);
+        sessionStorage.removeItem("gyro-profile-return-scroll");
+      }
+    } catch { /* Start at the top if browser storage is disabled. */ }
     update();
     return () => {
       element.removeEventListener("scroll", update);
@@ -285,6 +301,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
       element.removeEventListener("touchend", onTouchEnd);
       element.removeEventListener("touchcancel", onTouchEnd);
       element.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("gyro:profile-open", saveReturnPosition);
       window.clearTimeout(settleTimer);
       window.removeEventListener("resize", update);
       cancelAnimationFrame(frame);
@@ -322,6 +339,10 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
   const expandedListTop = `calc(100% - max(7dvh, calc(env(safe-area-inset-bottom) + 24px)) - ${episodeRowHeight})`;
   const motion = reducedMotion ? 0 : 1;
   const drift = (1 - card * .65) * motion;
+  const featuredVisible = card >= .999;
+  useEffect(() => {
+    onFeaturedReveal?.(featuredVisible);
+  }, [featuredVisible, onFeaturedReveal]);
 
   return <div ref={scroller} tabIndex={0} aria-label="Desert parallax followed by episodes. Scroll to reveal the episode card and episode list." className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
     <div ref={scrollContent}>
@@ -355,7 +376,7 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
             {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
             <SeriesArtwork index={index} tilt={tilt} focus={focus} drift={drift} motion={motion} />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" style={{ opacity: .12 + caption * .88 }} />
-            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out [text-shadow:0_2px_24px_#30120780]" style={{
+            <div className="pointer-events-none absolute inset-x-0 px-7 text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{
               top: `calc(${104 - card * 80}px + env(safe-area-inset-top))`,
               opacity: titleReveal,
               transform: `translate3d(${tilt.x * .45 * drift}px,${tilt.y * .45 * drift + (1 - titleReveal) * 24 * motion}px,0)`,
@@ -422,6 +443,6 @@ export default function DesertParallax({ tilt }: { tilt: { x: number; y: number 
         </div>
       </div>
     </div>
-    {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} onClose={closePlayer} />}
+    {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} videoId={series.id === "desert" && playing.episode === 1 ? "NXnbLxUO4CU" : undefined} onClose={closePlayer} />}
   </div>;
 }
