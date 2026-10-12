@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import {
-  adminCreditRates, adminOverview, adminUploads, adminUsers, createCreditRate, updateCreditRate,
-  type AdminUpload, type AdminUser, type CreditRate, type Overview,
+  adminCreditRates, adminCreditTransactions, adminOverview, adminSettings, adminUploads, adminUsers, adminWalletPacks, adminWalletPurchases, createCreditRate, createWalletPack, updateCreditRate, updateSetting, updateWalletPack, userCreatorEconomics,
+  type AdminUpload, type AdminUser, type CreditRate, type CreditTransaction, type CreditTxnKind, type Overview, type UserEconomics, type WalletPack, type WalletPurchase,
 } from "@/lib/admin";
 import { deleteContent } from "@/lib/admin";
 import AddVideo from "./AddVideo";
@@ -13,8 +13,9 @@ import CloudflareUpload from "./CloudflareUpload";
 import EditContentModal from "./EditContentModal";
 import GenresPanel from "./GenresPanel";
 import GrantCreditsDialog from "./GrantCreditsDialog";
+import AnalyticsPanel from "./AnalyticsPanel";
 
-const TABS = ["Overview", "Users", "Content", "Genres", "Cost", "Add YouTube", "Add Cloudflare"] as const;
+const TABS = ["Overview", "Analytics", "Users", "Content", "Genres", "Cost", "Transactions", "Wallet", "Settings", "Add YouTube", "Add Cloudflare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads `fn` once per token/dependency change; returns {data, error, loading, reload}. */
@@ -64,6 +65,7 @@ function UsersPanel({ token }: { token: string }) {
   const [q, setQ] = useState("");
   const { data, error, loading, reload } = useAsync((tok) => adminUsers(tok, q || undefined), token, [q]);
   const [grantUser, setGrantUser] = useState<AdminUser | null>(null);
+  const [econUser, setEconUser] = useState<AdminUser | null>(null);
   return (
     <div>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search email or name…" className="mb-3 h-10 w-full max-w-sm rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[13px] text-white outline-none placeholder:text-white/35 focus:border-white/30" />
@@ -72,13 +74,72 @@ function UsersPanel({ token }: { token: string }) {
           <table className="w-full border-collapse">
             <thead className="bg-white/[0.03]"><tr><th className={th}>Email</th><th className={th}>Name</th><th className={th}>Role</th><th className={th}>Credits</th><th className={th}>Verified</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((u: AdminUser) => (
-              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{u.creditsBalance}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td><td className={td}><button onClick={() => setGrantUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">＋ Credits</button></td></tr>
+              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{u.creditsBalance}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td><td className={td}><div className="flex gap-1.5"><button onClick={() => setEconUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Economics</button><button onClick={() => setGrantUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">＋ Credits</button></div></td></tr>
             ))}</tbody>
           </table>
           {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No users found.</p>}
         </div>
       )}
       {grantUser && <GrantCreditsDialog user={grantUser} token={token} onClose={() => setGrantUser(null)} onGranted={reload} />}
+      {econUser && <EconomicsDialog user={econUser} token={token} onClose={() => setEconUser(null)} />}
+    </div>
+  );
+}
+
+const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+
+/** Read-only per-user Creator Lab economics modal (credits, API cost, revenue, P/L + per-model breakdown). */
+function EconomicsDialog({ user, token, onClose }: { user: AdminUser; token: string; onClose: () => void }) {
+  const [data, setData] = useState<UserEconomics | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    userCreatorEconomics(user.id, token).then((d) => { if (live) setData(d); }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Failed to load"); });
+    return () => { live = false; };
+  }, [user.id, token]);
+  const s = data?.summary;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-[#121314] p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div><h3 className="text-[16px] font-semibold text-white">Creator Lab economics</h3><p className="text-[13px] text-white/45">{user.email}</p></div>
+          <button onClick={onClose} className="rounded-md border border-white/15 px-3 py-1 text-[13px] text-white/70 hover:bg-white/10">Close</button>
+        </div>
+        {error ? <ErrorLine text={error} /> : !s ? <Loading /> : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <EconStat label="Credits balance" value={String(s.creditsBalance)} />
+              <EconStat label="Credits bought" value={String(s.creditsBought)} />
+              <EconStat label="Credits granted" value={String(s.creditsGranted)} />
+              <EconStat label="Credits consumed" value={String(s.creditsConsumed)} />
+              <EconStat label="Credits refunded" value={String(s.creditsRefunded)} />
+              <EconStat label="Revenue (paid)" value={rupees(s.revenuePaise)} />
+              <EconStat label="API expenditure" value={rupees(s.apiExpenditurePaise)} />
+              <EconStat label="Profit / loss" value={rupees(s.profitLossPaise)} tone={s.profitLossPaise < 0 ? "bad" : "good"} />
+              <EconStat label="Consumed credit value" value={rupees(s.creditValuePaise)} />
+            </div>
+            <h4 className="mb-2 mt-5 text-[13px] font-semibold text-white/70">By model</h4>
+            <div className="overflow-x-auto rounded-xl border border-white/8">
+              <table className="w-full border-collapse">
+                <thead className="bg-white/[0.03]"><tr><th className={th}>Model</th><th className={th}>Op</th><th className={th}>Gens</th><th className={th}>Credits</th><th className={th}>API cost</th><th className={th}>Margin</th></tr></thead>
+                <tbody>{data.byModel.map((m, i) => (
+                  <tr key={i} className="border-t border-white/5"><td className={td}>{m.provider}/{m.model}</td><td className={td}>{m.operation}</td><td className={td}>{m.generations}</td><td className={td}>{m.creditsConsumed}</td><td className={td}>{rupees(m.apiCostPaise)}</td><td className={`${td} ${m.marginPaise < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{rupees(m.marginPaise)}</td></tr>
+                ))}</tbody>
+              </table>
+              {data.byModel.length === 0 && <p className="p-4 text-[13px] text-white/40">No generations yet.</p>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EconStat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
+  return (
+    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-3">
+      <div className="text-[11px] text-white/45">{label}</div>
+      <div className={`mt-0.5 text-[15px] font-semibold ${tone === "bad" ? "text-[#ff8f8f]" : tone === "good" ? "text-[#9fe0bd]" : "text-white"}`}>{value}</div>
     </div>
   );
 }
@@ -172,7 +233,10 @@ function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; 
     return (
       <tr className="border-t border-white/5">
         <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
-        <td className={td}>₹{(rate.inrCostPaise / 100).toFixed(2)}</td><td className={td}>{rate.creditCost}</td><td className={td}>{rate.isActive ? "Yes" : "No"}</td>
+        <td className={td}>₹{(rate.inrCostPaise / 100).toFixed(2)}</td><td className={td}>{rate.creditCost}</td>
+        <td className={td}>{rate.revenuePaise !== undefined ? `₹${(rate.revenuePaise / 100).toFixed(2)}` : "—"}</td>
+        <td className={`${td} ${rate.marginPaise !== undefined && rate.marginPaise < 0 ? "text-[#ff8f8f]" : rate.marginPaise !== undefined ? "text-[#9fe0bd]" : ""}`}>{rate.marginPaise !== undefined ? `₹${(rate.marginPaise / 100).toFixed(2)}` : "—"}</td>
+        <td className={td}>{rate.isActive ? "Yes" : "No"}</td>
         <td className={td}><button onClick={() => setEditing(true)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
       </tr>
     );
@@ -182,6 +246,7 @@ function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; 
       <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
       <td className={td}><input className={smallInput} type="number" min={0} step={0.01} value={inr} onChange={(e) => setInr(e.target.value)} /></td>
       <td className={td}><input className={smallInput} type="number" min={1} step={1} value={creditCost} onChange={(e) => setCreditCost(e.target.value)} /></td>
+      <td className={td}>—</td><td className={td}>—</td>
       <td className={td}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-[#2f7d5b]" /></td>
       <td className={td}>
         <div className="flex gap-1.5">
@@ -252,7 +317,7 @@ function CostPanel({ token }: { token: string }) {
       {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
         <div className="overflow-x-auto rounded-xl border border-white/8">
           <table className="w-full border-collapse">
-            <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>INR cost</th><th className={th}>Credits</th><th className={th}>Active</th><th className={th}></th></tr></thead>
+            <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>API cost</th><th className={th}>Credits</th><th className={th}>Revenue/gen</th><th className={th}>Margin</th><th className={th}>Active</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((r: CreditRate) => (
               <RateRow key={r.id} rate={r} token={token} onChanged={reload} />
             ))}</tbody>
@@ -261,6 +326,241 @@ function CostPanel({ token }: { token: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+const KINDS: Array<CreditTxnKind | "ALL"> = ["ALL", "PURCHASE", "USAGE", "REFUND", "GRANT"];
+const KIND_LABEL: Record<CreditTxnKind, string> = { PURCHASE: "Purchase", USAGE: "Usage", REFUND: "Refund", GRANT: "Grant" };
+
+/** Unified Creator Lab credit transaction history: purchases, usage, refunds, grants — filterable by kind / user / date. */
+function TransactionsPanel({ token }: { token: string }) {
+  const [kind, setKind] = useState<CreditTxnKind | "ALL">("ALL");
+  const [email, setEmail] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<{ items: CreditTransaction[]; total: number; totalPages: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset to first page when filters change
+  useEffect(() => { setPage(1); }, [kind, from, to]);
+  useEffect(() => {
+    let live = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag for the fetch below
+    setLoading(true); setError(null);
+    adminCreditTransactions(token, { page, kind: kind === "ALL" ? undefined : kind, from: from || undefined, to: to || undefined })
+      .then((d) => { if (live) setData(d); })
+      .catch((e) => { if (live) setError(e instanceof Error ? e.message : "Failed to load"); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [token, page, kind, from, to]);
+
+  // Client-side email filter within the loaded page (admin endpoint filters by userId; email is a convenience).
+  const rows = (data?.items ?? []).filter((r) => !email || r.user?.email.toLowerCase().includes(email.toLowerCase()));
+  const kindColor: Record<CreditTxnKind, string> = { PURCHASE: "text-[#9fe0bd]", GRANT: "text-[#9fc3e0]", USAGE: "text-white/80", REFUND: "text-[#e0c89f]" };
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-end gap-2">
+        <div className="flex gap-1">{KINDS.map((k) => (
+          <button key={k} onClick={() => setKind(k)} className={`rounded-md border px-3 py-1.5 text-[12px] ${kind === k ? "border-[#c0d8cc] bg-white/10 text-white" : "border-white/12 text-white/60 hover:bg-white/5"}`}>{k === "ALL" ? "All" : KIND_LABEL[k]}</button>
+        ))}</div>
+        <label className="block"><span className="mb-1 block text-[11px] text-white/45">From</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={smallInput} /></label>
+        <label className="block"><span className="mb-1 block text-[11px] text-white/45">To</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={smallInput} /></label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Filter email (this page)…" className="h-9 w-56 rounded-md border border-white/12 bg-white/[0.04] px-2 text-[13px] text-white outline-none placeholder:text-white/35 focus:border-white/30" />
+      </div>
+      {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
+        <div className="overflow-x-auto rounded-xl border border-white/8">
+          <table className="w-full border-collapse">
+            <thead className="bg-white/[0.03]"><tr><th className={th}>When</th><th className={th}>Kind</th><th className={th}>User</th><th className={th}>Model</th><th className={th}>Credits</th><th className={th}>Cash</th><th className={th}>API cost</th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.id} className="border-t border-white/5">
+                <td className={td}>{new Date(r.occurredAt).toLocaleString()}</td>
+                <td className={`${td} font-medium ${kindColor[r.kind]}`}>{KIND_LABEL[r.kind]}</td>
+                <td className={td}>{r.user?.email ?? "—"}</td>
+                <td className={td}>{r.model ? `${r.provider}/${r.model}` : "—"}</td>
+                <td className={`${td} ${r.credits < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{r.credits > 0 ? `+${r.credits}` : r.credits}</td>
+                <td className={td}>{r.cashPaise !== null ? rupees(r.cashPaise) : "—"}</td>
+                <td className={td}>{r.costPaise !== null ? rupees(r.costPaise) : "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {rows.length === 0 && <p className="p-4 text-[13px] text-white/40">No transactions.</p>}
+        </div>
+      )}
+      {data && data.totalPages > 1 && (
+        <div className="mt-3 flex items-center gap-3 text-[13px] text-white/60">
+          <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-md border border-white/12 px-3 py-1 disabled:opacity-40 hover:bg-white/5">Prev</button>
+          <span>Page {page} / {data.totalPages} · {data.total} total</span>
+          <button disabled={page >= data.totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-md border border-white/12 px-3 py-1 disabled:opacity-40 hover:bg-white/5">Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One editable platform setting. Numbers store either rupees (paise x100) or raw; `rounding` is a select. */
+function SettingField({ settingKey, label, hint, value, token, kind, options, onSaved }: {
+  settingKey: string; label: string; hint?: string; value: unknown; token: string;
+  kind: "rupees" | "int" | "float" | "select"; options?: string[]; onSaved: () => void;
+}) {
+  const initial = kind === "rupees" ? ((typeof value === "number" ? value : 0) / 100).toFixed(2) : String(value ?? (kind === "select" ? options?.[0] : 0));
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local input when the stored value loads/changes
+  useEffect(() => { setVal(initial); }, [initial]);
+  async function save() {
+    setErr(null);
+    let payload: number | string;
+    if (kind === "select") payload = val;
+    else if (kind === "rupees") payload = Math.round(Number(val) * 100);
+    else payload = kind === "int" ? Math.round(Number(val)) : Number(val);
+    if (kind !== "select" && (!Number.isFinite(payload as number) || (payload as number) < 0)) { setErr("Enter a valid non-negative number"); return; }
+    setSaving(true);
+    try { await updateSetting(settingKey, payload, token); setSaved(true); setTimeout(() => setSaved(false), 1800); onSaved(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Failed to save"); }
+    finally { setSaving(false); }
+  }
+  return (
+    <div className="flex items-end gap-3">
+      <label className="block min-w-0 flex-1">
+        <span className="mb-1 block text-[11px] text-white/45">{label}{hint ? <span className="text-white/30"> — {hint}</span> : null}</span>
+        {kind === "select"
+          ? <select className={smallInput} value={val} onChange={(e) => setVal(e.target.value)}>{options?.map((o) => <option key={o} value={o} className="bg-[#14171a]">{o}</option>)}</select>
+          : <input className={smallInput} type="number" min={0} step={kind === "rupees" || kind === "float" ? 0.01 : 1} value={val} onChange={(e) => setVal(e.target.value)} />}
+      </label>
+      <button onClick={() => void save()} disabled={saving} className="h-9 shrink-0 rounded-md border border-white/15 px-4 text-[13px] text-white/85 hover:bg-white/10 disabled:opacity-50">{saving ? "…" : "Save"}</button>
+      {saved && <span className="shrink-0 pb-1 text-[12px] text-[#9fe0bd]">Saved</span>}
+      {err && <span className="shrink-0 pb-1 text-[12px] text-[#ff8f8f]">{err}</span>}
+    </div>
+  );
+}
+
+/** Platform settings: Creator Lab conversion rate + Viewer Wallet pricing rules. */
+function SettingsPanel({ token }: { token: string }) {
+  const { data, error, loading, reload } = useAsync((tok) => adminSettings(tok), token);
+  if (loading) return <Loading />;
+  if (error) return <ErrorLine text={error} />;
+  const get = (k: string) => data?.items.find((s) => s.key === k)?.value;
+  return (
+    <div className="max-w-xl space-y-6">
+      <section className="rounded-xl border border-white/8 p-5">
+        <h3 className="text-[15px] font-semibold text-white">Creator Lab — credit economics</h3>
+        <p className="mb-4 mt-1 text-[13px] text-white/45">The value of one Creator Lab Credit in rupees. Drives revenue/margin and defaults a new model&apos;s credit cost.</p>
+        <SettingField settingKey="creator.credit.inrPerCreditPaise" label="₹ per credit" value={get("creator.credit.inrPerCreditPaise") ?? 100} token={token} kind="rupees" onSaved={reload} />
+      </section>
+      <section className="space-y-4 rounded-xl border border-white/8 p-5">
+        <div>
+          <h3 className="text-[15px] font-semibold text-white">Viewer Wallet — pricing rules</h3>
+          <p className="mt-1 text-[13px] text-white/45">How paid episodes are priced in coins (unless an episode has its own override). Default: 1 coin per minute.</p>
+        </div>
+        <SettingField settingKey="viewer.pricing.coinsPerMinute" label="Coins per minute" value={get("viewer.pricing.coinsPerMinute") ?? 1} token={token} kind="float" onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.rounding" label="Rounding" hint="fractional minutes" value={get("viewer.pricing.rounding") ?? "ceil"} token={token} kind="select" options={["ceil", "round", "floor"]} onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.minCoins" label="Minimum coins / paid episode" value={get("viewer.pricing.minCoins") ?? 1} token={token} kind="int" onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.maxCoins" label="Maximum coins / episode" hint="0 = no cap" value={get("viewer.pricing.maxCoins") ?? 0} token={token} kind="int" onSaved={reload} />
+        <SettingField settingKey="viewer.wallet.inrPerCoinPaise" label="₹ per coin (top-up value)" value={get("viewer.wallet.inrPerCoinPaise") ?? 100} token={token} kind="rupees" onSaved={reload} />
+      </section>
+    </div>
+  );
+}
+
+/** Viewer Wallet admin: coin pack CRUD + top-up purchase history. */
+function WalletPanel({ token }: { token: string }) {
+  const packs = useAsync((tok) => adminWalletPacks(tok), token);
+  const purchases = useAsync((tok) => adminWalletPurchases(tok), token);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState(""); const [coins, setCoins] = useState(""); const [bonus, setBonus] = useState("0"); const [price, setPrice] = useState("");
+  const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  async function create() {
+    setErr(null);
+    const coinAmount = Number(coins), pricePaise = Math.round(Number(price) * 100), bonusCoins = Number(bonus) || 0;
+    if (!name.trim()) { setErr("Name is required"); return; }
+    if (!Number.isInteger(coinAmount) || coinAmount <= 0) { setErr("Coins must be a whole number > 0"); return; }
+    if (!Number.isInteger(pricePaise) || pricePaise <= 0) { setErr("Price must be > 0"); return; }
+    setBusy(true);
+    try { await createWalletPack({ name: name.trim(), coinAmount, bonusCoins, pricePaise }, token); setName(""); setCoins(""); setBonus("0"); setPrice(""); setCreating(false); packs.reload(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Could not create"); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-[15px] font-semibold text-white">Wallet packs</h3>
+          <button onClick={() => setCreating((v) => !v)} className="rounded-md border border-white/15 px-3 py-1.5 text-[13px] text-white/80 hover:bg-white/10">{creating ? "Cancel" : "+ New pack"}</button>
+        </div>
+        {creating && (
+          <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border border-white/8 p-4 sm:grid-cols-5">
+            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Name</span><input className={smallInput} value={name} onChange={(e) => setName(e.target.value)} placeholder="Starter" /></label>
+            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Coins</span><input className={smallInput} type="number" min={1} value={coins} onChange={(e) => setCoins(e.target.value)} placeholder="50" /></label>
+            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Bonus coins</span><input className={smallInput} type="number" min={0} value={bonus} onChange={(e) => setBonus(e.target.value)} /></label>
+            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Price (₹)</span><input className={smallInput} type="number" min={1} step={0.01} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="50" /></label>
+            <div className="flex items-end"><button onClick={() => void create()} disabled={busy} className="h-9 w-full rounded-md bg-[#2f7d5b] px-4 text-[13px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Create"}</button></div>
+            {err && <p className="col-span-full text-[12px] text-[#ff8f8f]">{err}</p>}
+          </div>
+        )}
+        {packs.loading ? <Loading /> : packs.error ? <ErrorLine text={packs.error} /> : (
+          <div className="overflow-x-auto rounded-xl border border-white/8">
+            <table className="w-full border-collapse">
+              <thead className="bg-white/[0.03]"><tr><th className={th}>Name</th><th className={th}>Coins</th><th className={th}>Bonus</th><th className={th}>Price</th><th className={th}>Active</th><th className={th}></th></tr></thead>
+              <tbody>{packs.data?.items.map((p: WalletPack) => <WalletPackRow key={p.id} pack={p} token={token} onChanged={packs.reload} />)}</tbody>
+            </table>
+            {packs.data && packs.data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No wallet packs yet.</p>}
+          </div>
+        )}
+      </section>
+      <section>
+        <h3 className="mb-3 text-[15px] font-semibold text-white">Recent top-ups</h3>
+        {purchases.loading ? <Loading /> : purchases.error ? <ErrorLine text={purchases.error} /> : (
+          <div className="overflow-x-auto rounded-xl border border-white/8">
+            <table className="w-full border-collapse">
+              <thead className="bg-white/[0.03]"><tr><th className={th}>When</th><th className={th}>User</th><th className={th}>Pack</th><th className={th}>Coins</th><th className={th}>Amount</th><th className={th}>Status</th></tr></thead>
+              <tbody>{purchases.data?.items.map((p: WalletPurchase) => (
+                <tr key={p.id} className="border-t border-white/5"><td className={td}>{new Date(p.createdAt).toLocaleString()}</td><td className={td}>{p.user?.email ?? "—"}</td><td className={td}>{p.pack?.name ?? "—"}</td><td className={td}>{p.coinsCredited}</td><td className={td}>{rupees(p.amountPaise)}</td><td className={`${td} ${p.status === "SUCCEEDED" ? "text-[#9fe0bd]" : p.status === "FAILED" ? "text-[#ff8f8f]" : "text-white/60"}`}>{p.status}</td></tr>
+              ))}</tbody>
+            </table>
+            {purchases.data && purchases.data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No top-ups yet.</p>}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function WalletPackRow({ pack, token, onChanged }: { pack: WalletPack; token: string; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [coins, setCoins] = useState(String(pack.coinAmount));
+  const [bonus, setBonus] = useState(String(pack.bonusCoins));
+  const [price, setPrice] = useState((pack.pricePaise / 100).toFixed(2));
+  const [active, setActive] = useState(pack.isActive);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+  async function save() {
+    setErr(null);
+    const coinAmount = Number(coins), pricePaise = Math.round(Number(price) * 100), bonusCoins = Number(bonus) || 0;
+    if (!Number.isInteger(coinAmount) || coinAmount <= 0 || !Number.isInteger(pricePaise) || pricePaise <= 0) { setErr("Invalid values"); return; }
+    setBusy(true);
+    try { await updateWalletPack(pack.id, { coinAmount, bonusCoins, pricePaise, isActive: active }, token); setEditing(false); onChanged(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Could not save"); }
+    finally { setBusy(false); }
+  }
+  if (!editing) return (
+    <tr className="border-t border-white/5">
+      <td className={td}>{pack.name}</td><td className={td}>{pack.coinAmount}</td><td className={td}>{pack.bonusCoins}</td><td className={td}>{rupees(pack.pricePaise)}</td><td className={td}>{pack.isActive ? "Yes" : "No"}</td>
+      <td className={td}><button onClick={() => setEditing(true)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
+    </tr>
+  );
+  return (
+    <tr className="border-t border-white/5">
+      <td className={td}>{pack.name}</td>
+      <td className={td}><input className={smallInput} type="number" min={1} value={coins} onChange={(e) => setCoins(e.target.value)} /></td>
+      <td className={td}><input className={smallInput} type="number" min={0} value={bonus} onChange={(e) => setBonus(e.target.value)} /></td>
+      <td className={td}><input className={smallInput} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(e.target.value)} /></td>
+      <td className={td}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-[#2f7d5b]" /></td>
+      <td className={td}><div className="flex gap-1.5"><button onClick={() => void save()} disabled={busy} className="rounded-md bg-[#2f7d5b] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Save"}</button><button onClick={() => setEditing(false)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button></div>{err && <p className="mt-1 text-[11px] text-[#ff8f8f]">{err}</p>}</td>
+    </tr>
   );
 }
 
@@ -284,10 +584,14 @@ export default function AdminDashboard() {
       </nav>
       <main className="p-6">
         {!accessToken ? <Loading /> : tab === "Overview" ? <OverviewPanel token={accessToken} />
+          : tab === "Analytics" ? <AnalyticsPanel token={accessToken} />
           : tab === "Users" ? <UsersPanel token={accessToken} />
           : tab === "Content" ? <ContentPanel token={accessToken} />
           : tab === "Genres" ? <GenresPanel token={accessToken} />
           : tab === "Cost" ? <CostPanel token={accessToken} />
+          : tab === "Transactions" ? <TransactionsPanel token={accessToken} />
+          : tab === "Wallet" ? <WalletPanel token={accessToken} />
+          : tab === "Settings" ? <SettingsPanel token={accessToken} />
           : tab === "Add YouTube" ? <AddVideo />
           : <CloudflareUpload />}
       </main>

@@ -17,6 +17,8 @@ export type CreatorStep = {
   outputJson: { text?: string } | null;
   model: string | null;
   creditsUsed: number;
+  inrCostPaise: number | null;
+  revenuePaise: number | null;
   createdAt: string;
   updatedAt: string;
   generationJob: { id: string; status: GenerationJobStatus; outputUrl: string | null; errorCode: string | null } | null;
@@ -53,6 +55,10 @@ export const editStep = (projectId: string, stepId: string, text: string, token:
 // --- Credits ---
 export const getCreditBalance = (token: string) =>
   apiFetch<{ balance: number }>("creator/credits?page=1&limit=1", { token });
+
+/** INR value (paise) of one Creator Lab credit — for showing a cost estimate next to each model. */
+export const getCreditValue = (token: string) =>
+  apiFetch<{ inrPerCreditPaise: number }>("creator/credit-value", { token });
 
 // --- Publish (uses the final ANIMATION step's generationJob id) ---
 export const publishJob = (jobId: string, body: PublishBody, token: string) =>

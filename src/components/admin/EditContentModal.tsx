@@ -8,9 +8,10 @@ import GenrePicker from "./GenrePicker";
 const input = "h-11 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-white/30";
 const label = "mb-1 block text-[12px] font-medium text-white/55";
 const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
+const durationHint = (secs: number | null | undefined) => (secs ? String(Math.ceil(secs / 60)) : "e.g. 5");
 const VISIBILITIES = ["PUBLISHED", "DRAFT", "PRIVATE", "ARCHIVED"] as const;
 
-type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number]; episodeNumber: string };
+type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number]; episodeNumber: string; isPremium: boolean; priceCoins: string };
 
 /** Edit an existing title: loads it, lets the admin change fields/genre/visibility, saves via PATCH. */
 export default function EditContentModal({ id, token, onClose, onSaved }: { id: string; token: string | null; onClose: () => void; onSaved: () => void }) {
@@ -29,7 +30,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     getContent(id, token).then((c) => {
       if (!live) return;
       setItem(c);
-      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "" });
+      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "", isPremium: c.isPremium, priceCoins: c.priceCoinsOverride != null ? String(c.priceCoinsOverride) : "" });
       setCategoryIds(c.categories.map((x) => x.id));
     }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Couldn’t load this title."); });
     return () => { live = false; };
@@ -47,12 +48,14 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     if (!token || !fields || busy) return;
     setBusy(true); setError(null);
     try {
+      const monetization = { isPremium: fields.isPremium, priceCoinsOverride: fields.isPremium && fields.priceCoins.trim() ? Number(fields.priceCoins) : null };
       await updateContent(id, isEpisode ? {
         // Episodes keep it minimal — the same fields used when adding one.
         title: fields.title.trim(),
         posterUrl: fields.posterUrl.trim() || undefined,
         youtubeUrl: item?.source === "YOUTUBE" ? fields.youtubeUrl.trim() || undefined : undefined,
         episodeNumber: fields.episodeNumber ? Number(fields.episodeNumber) : undefined,
+        ...monetization,
       } : {
         title: fields.title.trim(),
         tagline: fields.tagline.trim(),
@@ -63,6 +66,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
         type: fields.type,
         visibility: fields.visibility,
         categoryIds,
+        ...monetization,
       }, token);
       onSaved();
       onClose();
@@ -129,6 +133,20 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
                   </div>
                 </>
               )}
+              {/* Viewer Wallet monetization: free vs paid + optional coin price override. */}
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <label className="flex items-center gap-2 text-[13px] text-white/80">
+                  <input type="checkbox" checked={fields.isPremium} onChange={(e) => set("isPremium", e.target.checked)} className="size-4 accent-[#2f7d5b]" />
+                  Paid episode (requires wallet coins to unlock)
+                </label>
+                {fields.isPremium && (
+                  <div className="mt-3">
+                    <span className={label}>Price override (coins)</span>
+                    <input className={input} type="number" min={0} step={1} value={fields.priceCoins} onChange={(e) => set("priceCoins", e.target.value)} placeholder={durationHint(item?.durationSecs)} />
+                    <p className="mt-1 text-[12px] text-white/40">Leave blank to price by duration{item?.durationSecs ? ` (≈ ${Math.ceil(item.durationSecs / 60)} coins)` : ""}.</p>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-3 pt-1">
                 <button type="button" onClick={save} disabled={busy || uploadingPoster} className="h-11 rounded-lg bg-[#2f7d5b] px-5 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "Saving…" : "Save changes"}</button>
                 <button type="button" onClick={onClose} className="h-11 rounded-lg border border-white/12 px-4 text-[14px] text-white/70 hover:bg-white/5">Cancel</button>

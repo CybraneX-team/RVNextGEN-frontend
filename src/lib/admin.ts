@@ -88,6 +88,9 @@ export type UpdateContentBody = {
   categoryIds?: string[];
   seasonNumber?: number;
   episodeNumber?: number;
+  /** Viewer Wallet: paid flag + optional per-episode coin price (null clears the override → duration-based). */
+  isPremium?: boolean;
+  priceCoinsOverride?: number | null;
 };
 export const updateContent = (id: string, body: UpdateContentBody, token: string) =>
   apiFetch<ApiContent>(`content/${id}`, { method: "PATCH", body, token });
@@ -161,20 +164,36 @@ export const grantCredits = (userId: string, amount: number, reason: string, tok
     token,
   });
 
+// --- Per-user Creator Lab economics (admin drill-down) ---
+export type UserEconomics = {
+  user: { id: string; email: string; creditsBalance: number };
+  inrPerCreditPaise: number;
+  summary: {
+    creditsBalance: number; creditsBought: number; creditsGranted: number; creditsRefunded: number; creditsConsumed: number;
+    apiExpenditurePaise: number; revenuePaise: number; profitLossPaise: number; creditValuePaise: number;
+  };
+  byModel: Array<{ provider: string | null; operation: "TEXT" | "IMAGE" | "VIDEO" | null; model: string | null; generations: number; creditsConsumed: number; apiCostPaise: number; creditValuePaise: number; marginPaise: number }>;
+};
+export const userCreatorEconomics = (userId: string, token: string) =>
+  apiFetch<UserEconomics>(`admin/users/${userId}/creator-economics`, { token });
+
 // --- Credit rates (cost per model) ---
 export type CreditRate = {
   id: string; provider: string; operation: "TEXT" | "IMAGE" | "VIDEO"; model: string;
   inrCostPaise: number; creditCost: number; isActive: boolean;
+  /** Derived (credits x credit value) and (revenue - cost); present on list reads. */
+  revenuePaise?: number; marginPaise?: number;
 };
 export const adminCreditRates = (token: string) =>
-  apiFetch<Paginated<CreditRate>>("admin/credit-rates", { token });
+  apiFetch<Paginated<CreditRate> & { inrPerCreditPaise: number }>("admin/credit-rates", { token });
 
 export type CreateCreditRateBody = {
   provider: string;
   operation: "TEXT" | "IMAGE" | "VIDEO";
   model: string;
   inrCostPaise: number;
-  creditCost: number;
+  /** Omit to let the server derive a break-even default from the global conversion rate. */
+  creditCost?: number;
 };
 export const createCreditRate = (body: CreateCreditRateBody, token: string) =>
   apiFetch<CreditRate>("admin/credit-rates", { method: "POST", body, token });
@@ -182,6 +201,81 @@ export const createCreditRate = (body: CreateCreditRateBody, token: string) =>
 export type UpdateCreditRateBody = { inrCostPaise?: number; creditCost?: number; isActive?: boolean };
 export const updateCreditRate = (id: string, body: UpdateCreditRateBody, token: string) =>
   apiFetch<CreditRate>(`admin/credit-rates/${id}`, { method: "PATCH", body, token });
+
+// --- Unified Creator Lab credit transaction history ---
+export type CreditTxnKind = "PURCHASE" | "GRANT" | "USAGE" | "REFUND";
+export type CreditTransaction = {
+  id: string; occurredAt: string; kind: CreditTxnKind; credits: number;
+  cashPaise: number | null; costPaise: number | null;
+  provider: string | null; operation: "TEXT" | "IMAGE" | "VIDEO" | null; model: string | null;
+  generationJobId: string | null; user: { id: string; email: string } | null; balanceAfter: number | null;
+};
+export const adminCreditTransactions = (
+  token: string,
+  opts: { page?: number; kind?: CreditTxnKind; userId?: string; from?: string; to?: string } = {},
+) => {
+  const qs = listQuery({ page: opts.page ? String(opts.page) : undefined, kind: opts.kind, userId: opts.userId, from: opts.from, to: opts.to });
+  return apiFetch<Paginated<CreditTransaction>>(`admin/credit-transactions${qs}`, { token });
+};
+
+// --- Viewer Wallet packs (admin CRUD) ---
+export type WalletPack = { id: string; name: string; coinAmount: number; bonusCoins: number; pricePaise: number; currency: string; isActive: boolean };
+export const adminWalletPacks = (token: string) => apiFetch<Paginated<WalletPack>>("admin/wallet-packs?limit=100", { token });
+export type CreateWalletPackBody = { name: string; coinAmount: number; bonusCoins?: number; pricePaise: number; currency?: string };
+export const createWalletPack = (body: CreateWalletPackBody, token: string) => apiFetch<WalletPack>("admin/wallet-packs", { method: "POST", body, token });
+export type UpdateWalletPackBody = { name?: string; coinAmount?: number; bonusCoins?: number; pricePaise?: number; isActive?: boolean };
+export const updateWalletPack = (id: string, body: UpdateWalletPackBody, token: string) => apiFetch<WalletPack>(`admin/wallet-packs/${id}`, { method: "PATCH", body, token });
+
+export type WalletPurchase = { id: string; provider: string; amountPaise: number; currency: string; coinsCredited: number; status: string; createdAt: string; user: { id: string; email: string } | null; pack: { id: string; name: string } | null };
+export const adminWalletPurchases = (token: string, status?: string) => apiFetch<Paginated<WalletPurchase>>(`admin/wallet-purchases${listQuery({ status })}`, { token });
+export const adjustWallet = (userId: string, amount: number, reason: string, token: string) =>
+  apiFetch<{ userId: string; coinBalance: number }>(`admin/users/${userId}/wallet/adjust`, { method: "POST", body: { amount, reason }, token });
+
+// --- Analytics dashboard (sections A–E) ---
+export type AnalyticsRange = { from?: string; to?: string; seriesId?: string };
+const rangeQuery = (r: AnalyticsRange) => listQuery({ from: r.from, to: r.to, seriesId: r.seriesId });
+
+export type UsersAnalytics = {
+  range: { start: string; end: string };
+  totals: { totalUsers: number; newUsers: number; activeInRange: number; dau: number; wau: number; mau: number; returningUsers: number; newActiveUsers: number };
+  device: { key: string | null; count: number }[]; os: { key: string | null; count: number }[]; browser: { key: string | null; count: number }[]; source: { key: string | null; count: number }[];
+  geo: { country: string; events: number }[];
+  trend: { day: string; newUsers: number }[];
+};
+export const analyticsUsers = (token: string, r: AnalyticsRange = {}) => apiFetch<UsersAnalytics>(`admin/analytics/users${rangeQuery(r)}`, { token });
+
+export type ContentAnalytics = {
+  range: { start: string; end: string }; totalViews: number;
+  items: { id: string; title: string; type: string; durationSecs: number | null; uniqueViewers: number; starts: number; completes: number; completionRate: number; avgPercentComplete: number | null }[];
+};
+export const analyticsContent = (token: string, r: AnalyticsRange = {}) => apiFetch<ContentAnalytics>(`admin/analytics/content${rangeQuery(r)}`, { token });
+export type Dropoff = { episodeId: string; buckets: { decile: number; label: string; viewers: number }[] };
+export const analyticsDropoff = (token: string, episodeId: string, r: AnalyticsRange = {}) => apiFetch<Dropoff>(`admin/analytics/content/${episodeId}/dropoff${rangeQuery(r)}`, { token });
+
+export type RevenueAnalytics = {
+  range: { start: string; end: string }; totalRevenuePaise: number;
+  byStream: { walletPaise: number; creditPaise: number; packagePaise: number };
+  successfulPayments: number; failedPayments: number; coinsSpentOnUnlocks: number; episodeUnlocks: number;
+  payingUsers: number; arppuPaise: number; registrationToPayment: number;
+};
+export const analyticsRevenue = (token: string, r: AnalyticsRange = {}) => apiFetch<RevenueAnalytics>(`admin/analytics/revenue${rangeQuery(r)}`, { token });
+
+export type FunnelAnalytics = { range: { start: string; end: string }; stages: { stage: string; users: number }[] };
+export const analyticsFunnel = (token: string, r: AnalyticsRange = {}) => apiFetch<FunnelAnalytics>(`admin/analytics/funnel${rangeQuery(r)}`, { token });
+
+export type CreatorAnalytics = {
+  range: { start: string; end: string };
+  totals: { generations: number; succeeded: number; failed: number; failureRate: number };
+  models: { provider: string; model: string | null; operation: string; generations: number; succeeded: number; failed: number; creditsUsed: number; apiCostPaise: number; revenuePaise: number; avgLatencyMs: number | null; failureRate: number; marginPaise: number }[];
+};
+export const analyticsCreator = (token: string, r: AnalyticsRange = {}) => apiFetch<CreatorAnalytics>(`admin/analytics/creator${rangeQuery(r)}`, { token });
+
+// --- Platform settings (Creator Lab conversion rate, Viewer pricing, ...) ---
+export type PlatformSettingItem = { key: string; value: unknown };
+export const adminSettings = (token: string) =>
+  apiFetch<{ items: PlatformSettingItem[] }>("admin/settings", { token });
+export const updateSetting = (key: string, value: unknown, token: string) =>
+  apiFetch<{ key: string; value: unknown }>(`admin/settings/${key}`, { method: "PUT", body: { value }, token });
 
 function listQuery(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();

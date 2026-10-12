@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 import { ChevronRightIcon, GyroIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
 import GyroPage from "./GyroPage";
 import { getDeviceId } from "@/lib/device";
+import { unlockPreview, unlockEpisode } from "@/lib/wallet";
+import { trackEvent, watchBeacon, attachStreamTelemetry } from "@/lib/analytics";
 import {
   addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
   getWatchlist, removeFromWatchlist, type ApiContent,
@@ -175,30 +177,79 @@ const seriesSeasons: Record<string, number[]> = {
   city: [10, 8, 8],
 };
 
-/** Plays a title: YouTube embed or Cloudflare iframe, resolved via the backend playback endpoint. */
+/** Plays a title: YouTube embed or Cloudflare iframe, resolved via the backend playback endpoint.
+ * Premium episodes are gated by the Viewer Wallet: locked ones show an unlock prompt before playback. */
 function PlayerModal({ id, title, token, onClose }: { id: string; title: string; token: string | null; onClose: () => void }) {
-  const [state, setState] = useState<{ status: "loading" } | { status: "ready"; url: string } | { status: "error"; message: string }>({ status: "loading" });
+  type Gate = { priceCoins: number; balance: number; sufficient: boolean };
+  const [state, setState] = useState<{ status: "loading" } | { status: "ready"; url: string; cloudflare: boolean } | { status: "error"; message: string } | { status: "locked"; gate: Gate }>({ status: "loading" });
+  const [unlocking, setUnlocking] = useState(false);
+  const playerFrame = useRef<HTMLIFrameElement>(null);
+
+  const resolvePlayback = useCallback(async () => {
+    const pb = await createPlayback(id, token!, getDeviceId());
+    const cloudflare = !("embedUrl" in pb);
+    setState({ status: "ready", url: "embedUrl" in pb ? pb.embedUrl : pb.playerUrl, cloudflare });
+    // Watch-start + PLAY analytics. Cloudflare gets per-second telemetry via the Stream SDK (effect below).
+    trackEvent("PLAY", { contentId: id }, token);
+    if (!cloudflare) watchBeacon(id, "START", token);
+  }, [id, token]);
+
+  // Attach Cloudflare Stream telemetry (START/PROGRESS/COMPLETE with positions) once the iframe is mounted.
+  useEffect(() => {
+    if (state.status !== "ready" || !state.cloudflare || !playerFrame.current) return;
+    return attachStreamTelemetry(playerFrame.current, id, token);
+  }, [state, id, token]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- surface the no-token case before fetching
     if (!token) { setState({ status: "error", message: "Please sign in to watch." }); return; }
     let live = true;
-    createPlayback(id, token, getDeviceId())
-      .then((pb) => { if (live) setState({ status: "ready", url: "embedUrl" in pb ? pb.embedUrl : pb.playerUrl }); })
-      .catch((e) => { if (live) setState({ status: "error", message: e instanceof Error ? e.message : "This title can’t be played right now." }); });
+    (async () => {
+      try {
+        const preview = await unlockPreview(id, token);
+        if (!live) return;
+        if (!preview.alreadyUnlocked) { setState({ status: "locked", gate: { priceCoins: preview.priceCoins, balance: preview.balance, sufficient: preview.sufficient } }); return; }
+        await resolvePlayback();
+      } catch (e) { if (live) setState({ status: "error", message: e instanceof Error ? e.message : "This title can’t be played right now." }); }
+    })();
     return () => { live = false; };
-  }, [id, token]);
+  }, [id, token, resolvePlayback]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  async function confirmUnlock() {
+    if (!token) return;
+    setUnlocking(true);
+    try { await unlockEpisode(id, token); setState({ status: "loading" }); await resolvePlayback(); }
+    catch (e) { setState({ status: "error", message: e instanceof Error ? e.message : "Could not unlock this episode." }); }
+    finally { setUnlocking(false); }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={`Playing ${title}`} onClick={onClose}>
       <div className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl bg-black" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} aria-label="Close player" className="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full bg-black/60 text-[18px] text-white hover:bg-black/80">✕</button>
         {state.status === "loading" ? <div className="grid size-full place-items-center text-white/60">Loading…</div>
           : state.status === "error" ? <div className="grid size-full place-items-center px-6 text-center text-[13px] text-[#ff8f8f]">{state.message}</div>
-          : <iframe src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />}
+          : state.status === "locked" ? (
+            <div className="grid size-full place-items-center px-6 text-center">
+              <div className="max-w-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">Premium episode</p>
+                <h3 className="mt-2 text-[20px] font-semibold text-white">Unlock “{title}”</h3>
+                <p className="mt-2 text-[14px] text-white/60">Costs <span className="font-semibold text-white">{state.gate.priceCoins} coins</span>. Your balance: {state.gate.balance} coins.</p>
+                {state.gate.sufficient ? (
+                  <button onClick={() => void confirmUnlock()} disabled={unlocking} className="mt-5 h-11 rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{unlocking ? "Unlocking…" : `Unlock & play (${state.gate.priceCoins} coins)`}</button>
+                ) : (
+                  <div className="mt-5"><p className="mb-3 text-[13px] text-[#ffb27f]">Not enough coins.</p><Link href="/wallet" className="inline-flex h-11 items-center rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f]">Add coins</Link></div>
+                )}
+              </div>
+            </div>
+          )
+          : <iframe ref={playerFrame} src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />}
       </div>
     </div>
   );
@@ -469,6 +520,7 @@ export default function StreamingApp() {
     catch { getWatchlist(accessToken).then(r => { const items = r.items.map(toFilm); setWatchlist(items); setSaved(items.map(i => i.id)); }).catch(() => undefined); }
   }
   function open(film: Film) {
+    trackEvent("VIEW", { contentId: film.id }, accessToken);
     if (!selectedId) browseScroll.current = window.scrollY;
     const url = new URL(window.location.href);
     url.searchParams.set("movie", film.id);
@@ -493,6 +545,7 @@ export default function StreamingApp() {
       <span className="mt-[62px] mb-[22px] ml-3 text-[8px] tracking-[2px] text-[#56615b]">YOUR SPACE</span>
       <nav className="flex flex-col gap-[10px]"><NavigationItems page={page} navigate={navigate} /></nav>
       <Link href="/creator" className="mt-[18px] flex items-center gap-[14px] rounded-[7px] px-3 py-2 text-[15px] font-medium text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/10"><PlayIcon className="size-[18px]" />Creator Lab</Link>
+      <Link href="/wallet" className="flex items-center gap-[14px] rounded-[7px] px-3 py-2 text-[15px] font-medium text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/10"><span className="grid size-[18px] place-items-center text-[16px]">◉</span>Wallet</Link>
       <div className="mt-auto text-[9px] leading-loose text-[#6d7871]"><span className="mr-[5px] inline-block size-1 rounded-full bg-[#91b09e]" /> A little escape. Anytime.<small className="mt-[15px] block text-[9px] text-[#424d46]">© 2026 Streamline</small></div>
     </aside>
     <main className="overflow-hidden pt-[19px] pb-40 lg:ml-[200px] lg:max-w-[1900px] lg:px-[42px] lg:pt-0 lg:pb-[30px] min-[1450px]:ml-[220px] min-[1450px]:px-[60px]">
@@ -571,7 +624,7 @@ export default function StreamingApp() {
             <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold tracking-[-.2px] text-white sm:text-[16px]">Open Creator&apos;s Lab</span><span className="mt-1 block text-[12px] leading-5 text-white/55 sm:text-[13px]">Build a story into a film, step by step.</span></span>
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0 text-white/40 transition-[transform,color] group-hover:translate-x-1 group-hover:text-[#e5b27f]" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
           </Link>
-          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3"><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton>{user?.role === "ADMIN" && <Link href="/admin" className="inline-flex min-h-[43px] items-center justify-center gap-2 rounded-[7px] border border-[#c0d8cc]/40 bg-[#c0d8cc]/10 px-[21px] text-[13px] font-semibold text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/20">Admin panel</Link>}<button type="button" disabled={signingOut} onClick={() => void logout()} className="inline-flex min-h-[43px] items-center justify-center rounded-[7px] border border-white/15 bg-white/5 px-[21px] text-[13px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50">{signingOut ? "Logging out…" : "Log out"}</button></div></div>
+          <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3"><ActionButton onClick={() => navigate("Library")}><LibraryIcon />My library · {saved.length}</ActionButton><Link href="/wallet" className="inline-flex min-h-[43px] items-center justify-center gap-2 rounded-[7px] border border-[#2f7d5b]/40 bg-[#2f7d5b]/10 px-[21px] text-[13px] font-semibold text-[#9fe0bd] transition-colors hover:bg-[#2f7d5b]/20">◉ Wallet</Link>{user?.role === "ADMIN" && <Link href="/admin" className="inline-flex min-h-[43px] items-center justify-center gap-2 rounded-[7px] border border-[#c0d8cc]/40 bg-[#c0d8cc]/10 px-[21px] text-[13px] font-semibold text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/20">Admin panel</Link>}<button type="button" disabled={signingOut} onClick={() => void logout()} className="inline-flex min-h-[43px] items-center justify-center rounded-[7px] border border-white/15 bg-white/5 px-[21px] text-[13px] font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-wait disabled:opacity-50">{signingOut ? "Logging out…" : "Log out"}</button></div></div>
       </section> : <section className="min-h-[75vh] px-[23px] py-[30px] lg:px-0 lg:py-10">
         {/* <FeatureLabel>{page === "Search" ? "FIND YOUR NEXT FAVORITE" : "SAVED FOR A GOOD NIGHT"}</FeatureLabel> */}
         <h1 className="mt-5 mb-7 text-[28px] tracking-[-1px] lg:text-[38px]">{page === "Search" ? "What are you looking for?" : "Your library"}</h1>

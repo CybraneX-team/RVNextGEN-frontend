@@ -3,12 +3,14 @@ import { ApiError, messageFrom } from "./api";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 type ApiOptions = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   /** Access token from useAuth(); required for anything behind AccessTokenGuard. */
   token?: string | null;
   /** Needed by the Cloudflare playback endpoint. */
   deviceId?: string;
+  /** Extra request headers (e.g. idempotency-key for checkout endpoints). */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
 };
 
@@ -18,7 +20,7 @@ type ApiOptions = {
  * stays in the httpOnly cookie owned by the same-origin /api/auth proxy. `path` is relative to /api.
  */
 export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const { method = "GET", body, token, deviceId, signal } = opts;
+  const { method = "GET", body, token, deviceId, headers, signal } = opts;
   const isFormData = body instanceof FormData;
   let response: Response;
   try {
@@ -28,6 +30,7 @@ export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {})
         ...(body !== undefined && !isFormData ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(deviceId ? { "x-device-id": deviceId } : {}),
+        ...(headers ?? {}),
       },
       body: body === undefined ? undefined : isFormData ? body as BodyInit : JSON.stringify(body),
       cache: "no-store",

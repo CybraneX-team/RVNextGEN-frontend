@@ -27,12 +27,14 @@ function StatusBadge({ status }: { status: StageView["status"] }) {
 
 /** One pipeline stage. Handles text (editable), image, and video operations. */
 export default function StageCard({
-  stage, projectId, token, balance, onChanged, onPublish, index,
+  stage, projectId, token, balance, inrPerCreditPaise, onChanged, onPublish, index,
 }: {
   stage: StageView;
   projectId: string;
   token: string;
   balance: number | null;
+  /** INR (paise) per credit, for the cost estimate shown next to each model. Null = don't show estimate. */
+  inrPerCreditPaise: number | null;
   onChanged: () => void;
   onPublish?: (jobId: string) => void;
   index: number;
@@ -52,6 +54,8 @@ export default function StageCard({
 
   const cost = model?.credits ?? 0;
   const tooPoor = balance != null && balance < cost;
+  /** "≈ ₹X" for a given credit count, or "" when the rate isn't loaded. */
+  const estInr = (credits: number) => inrPerCreditPaise != null ? ` ≈ ₹${((credits * inrPerCreditPaise) / 100).toFixed(2)}` : "";
 
   async function generate() {
     if (busy) return;
@@ -107,6 +111,9 @@ export default function StageCard({
       {/* Output */}
       {status === "READY" && (
         <div className="mb-4">
+          {step && step.creditsUsed > 0 && (
+            <p className="mb-2 text-[11px] text-white/40">Used {step.creditsUsed} credit{step.creditsUsed === 1 ? "" : "s"}{step.revenuePaise != null ? ` ≈ ₹${(step.revenuePaise / 100).toFixed(2)}` : estInr(step.creditsUsed)}</p>
+          )}
           {isText && !editing && text && (
             <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/[.07] bg-black/20 p-3.5 text-[13px] leading-relaxed text-white/80 sm:p-4">{text}</div>
           )}
@@ -161,7 +168,7 @@ export default function StageCard({
                 aria-label={`${meta.label} generation model`}
                 className="h-11 w-full min-w-0 rounded-xl border border-white/10 bg-[#201d1e] px-3 text-[12px] text-white outline-none focus:border-[#e5b27f]/45 sm:w-auto sm:max-w-full sm:flex-1 sm:text-[13px]"
               >
-                {models.map((m) => <option key={m.model} value={m.model} className="bg-[#14171a]">{m.label} · {m.credits} cr</option>)}
+                {models.map((m) => <option key={m.model} value={m.model} className="bg-[#14171a]">{m.label} · {m.credits} cr{estInr(m.credits)}</option>)}
               </select>
             )}
             <button
@@ -172,7 +179,7 @@ export default function StageCard({
             >
               {busy ? "Working…" : status === "READY" ? "Regenerate" : "Generate"}
             </button>
-            {cost > 0 && <span className="text-center text-[11px] text-white/40 sm:text-left">Uses {cost} credit{cost === 1 ? "" : "s"}{tooPoor ? " · not enough credits" : ""}</span>}
+            {cost > 0 && <span className="text-center text-[11px] text-white/40 sm:text-left">Uses {cost} credit{cost === 1 ? "" : "s"}{estInr(cost)}{tooPoor ? " · not enough credits" : ""}</span>}
           </div>
           {error && <p role="alert" className="mt-2 text-[13px] text-[#ff8f8f]">{error}</p>}
         </div>

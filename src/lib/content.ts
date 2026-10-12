@@ -14,6 +14,7 @@ export type ApiContent = {
   type: ContentType;
   visibility: "DRAFT" | "PRIVATE" | "PUBLISHED" | "ARCHIVED";
   isPremium: boolean;
+  priceCoinsOverride: number | null;
   isAiGenerated: boolean;
   durationSecs: number | null;
   releaseDate: string | null;
