@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { authApi, type Session } from "@/lib/api";
 import { clearPendingVerification, parsePendingVerification, readPendingVerificationRaw } from "@/lib/pending-verification";
 import { useAuth } from "./AuthProvider";
+import { LiquidGlassSurface } from "./LiquidGlassSurface";
 
 const POLL_MS = 3000;
 const RESEND_COOLDOWN_S = 30;
@@ -78,12 +79,12 @@ export default function VerifyPending() {
   const loginHref = email ? `/signin?email=${encodeURIComponent(email)}` : "/signin";
 
   return (
-    <main className="relative h-full w-full overflow-y-auto px-6 pb-10 text-white">
-      <Link href="/signup" className="absolute top-5 left-6 z-10 grid size-12 place-items-center rounded-full bg-black/25 text-white/80 backdrop-blur-md" aria-label="Back to create account"><ChevronLeft className="size-6" /></Link>
-      <section className="absolute inset-x-0 bottom-10 px-6">
+    <main className="relative h-full w-full overflow-y-auto px-6 pb-10 text-white lg:flex lg:items-center lg:justify-center lg:py-10">
+      <LiquidGlassSurface className="absolute top-5 left-6 z-10 rounded-full"><Link href="/signup" className="grid size-12 place-items-center rounded-full text-white" aria-label="Back to create account"><ChevronLeft className="size-6" /></Link></LiquidGlassSurface>
+      <section className="absolute inset-x-0 bottom-10 px-6 lg:static lg:w-full lg:max-w-[410px] lg:px-0">
         <div className="flex flex-col items-center gap-3 text-center">
-          <span className="grid size-14 place-items-center rounded-full border border-white/15 bg-white/[0.06]"><MailCheck className="size-7" strokeWidth={1.6} /></span>
-          <h1 className="text-2xl font-semibold">Verify your email</h1>
+          <LiquidGlassSurface className="rounded-full"><span className="grid size-14 place-items-center rounded-full text-white"><MailCheck className="size-7" strokeWidth={1.6} /></span></LiquidGlassSurface>
+          <h1 className="text-2xl font-semibold tracking-[-.035em] lg:text-[32px]">Verify your email</h1>
           {pending && !expired ? (
             <p className="text-[15px] leading-relaxed text-white/65">We sent a verification link to<br /><span className="font-semibold text-white">{email}</span>.<br />Open it to finish creating your account. You’ll be signed in automatically.</p>
           ) : (
@@ -91,7 +92,7 @@ export default function VerifyPending() {
           )}
         </div>
         {message && <p role="status" className="mt-4 text-center text-[13px] text-white/70">{message}</p>}
-        <Link href={loginHref} className="mt-6 flex h-16 w-full items-center justify-center rounded-full bg-white px-5 text-md font-medium text-[#0e0d0f] transition-colors hover:bg-white/90">Log In</Link>
+        <Link href={loginHref} className="mt-6 flex h-16 w-full items-center justify-center rounded-full bg-white px-5 text-md font-medium text-[#0e0d0f] transition-colors hover:bg-white/90 lg:h-[50px] lg:text-[15px]">Log In</Link>
         {pending && (
           <button type="button" onClick={resend} disabled={cooldown > 0} className="mt-3 flex h-12 w-full items-center justify-center rounded-full bg-transparent text-[14px] font-medium text-white/65 hover:text-white disabled:opacity-50">
             {cooldown > 0 ? `Resend email in ${cooldown}s` : "Didn’t get it? Resend email"}

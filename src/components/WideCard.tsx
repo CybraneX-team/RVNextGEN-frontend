@@ -6,7 +6,7 @@ export function WideCard({ item }: { item: WideItem }) {
     <div className="w-56 flex-shrink-0 sm:w-64 lg:w-80 xl:w-96">
       <div className="relative aspect-[16/10] w-full">
         <PosterArt gradient={item.gradient} title="" showTitle={false} />
-        <span className="absolute right-2 bottom-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+        <span className="absolute right-2 bottom-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
           {item.duration}
         </span>
       </div>

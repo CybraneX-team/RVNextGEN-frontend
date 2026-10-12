@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
 import { GYRO_SERIES, SeriesArtwork } from "./GyroSeries";
+import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 
 function phase(value: number, start: number, end: number) {
   const t = Math.min(1, Math.max(0, (value - start) / (end - start)));
@@ -14,7 +15,7 @@ const EPISODES = [2, 3, 4, 5, 6, 7, 8];
 const EMPTY_EPISODES: number[] = [];
 
 function EpisodeCard({ episode, onOpen, seriesIndex }: { episode: number; onOpen: (selection: EpisodeSelection) => void; seriesIndex: number }) {
-  return <button data-episode={episode} type="button" aria-label={`Play Episode ${String(episode).padStart(2, "0")}`} onClick={event => onOpen({ episode, origin: event.currentTarget })} className="group relative aspect-[9/16] w-[min(24dvh,130px)] shrink-0 snap-start overflow-hidden rounded-[11px] border border-white/15 bg-[#302116] text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white/70">
+  return <button data-episode={episode} type="button" aria-label={`Play Episode ${String(episode).padStart(2, "0")}`} onClick={event => onOpen({ episode, origin: event.currentTarget })} className="series-episode-card group relative aspect-[9/16] shrink-0 snap-start overflow-hidden rounded-[11px] border border-white/15 bg-[#302116] text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white/70">
     {seriesIndex === 0 ? <span aria-hidden="true" className="absolute inset-[-8px] bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: episode % 2 === 0 ? "url('/images/distant-desert.png')" : "url('/images/foreground-dune.png')", backgroundPosition: episode % 2 === 0 ? `${42 + episode * 3}% center` : `${12 + episode * 2}% bottom` }} /> : <SeriesArtwork index={seriesIndex} />}
     <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20" />
     <span className="absolute inset-x-2 bottom-2 text-[11px] font-semibold text-white sm:inset-x-3 sm:bottom-3 sm:text-[13px]">Episode {String(episode).padStart(2, "0")}</span>
@@ -40,16 +41,16 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
   return <div ref={root} className="relative shrink-0" onBlur={event => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   }}>
-    <button ref={trigger} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(!open)} onKeyDown={event => {
+    <LiquidGlassButton ref={trigger} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(!open)} onKeyDown={event => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         setOpen(true);
       }
-    }} className="flex h-9 min-w-[138px] items-center justify-between gap-3 rounded-full border border-white/15 bg-white/8 px-3 text-[12px] font-medium text-white/85 backdrop-blur-md transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60">
+    }} className="flex h-11 min-w-[138px] items-center justify-between gap-3 rounded-full px-3 text-[12px] font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60">
       {!episodes.includes(selected) ? "Episode number" : `Episode ${String(selected).padStart(2, "0")}`}
       <svg aria-hidden="true" className={`size-3 text-white/60 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m4 6 4 4 4-4" /></svg>
-    </button>
-    {open && <div id={menuId} role="menu" aria-label="Choose an episode" className={`absolute right-0 z-30 w-44 overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#241a14]/95 p-1.5 shadow-[0_12px_40px_#0008] backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${openBelow ? "top-full mt-2 max-h-[min(240px,25dvh)]" : "bottom-full mb-2 max-h-[min(280px,35dvh)]"}`} onKeyDown={event => {
+    </LiquidGlassButton>
+    {open && <LiquidGlassSurface regular id={menuId} role="menu" aria-label="Choose an episode" className={`absolute right-0 z-30 w-44 overflow-y-auto overscroll-contain rounded-2xl p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${openBelow ? "top-full mt-2 max-h-[min(240px,25dvh)]" : "bottom-full mb-2 max-h-[min(280px,35dvh)]"}`} onKeyDown={event => {
       if (event.key === "Escape") {
         event.preventDefault();
         setOpen(false);
@@ -75,7 +76,7 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
           {selected === episode && <span aria-hidden="true" className="text-[#f4d6b0]">✓</span>}
         </button>;
       })}
-    </div>}
+    </LiquidGlassSurface>}
   </div>;
 }
 
@@ -117,6 +118,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   }, [playing, recentEpisodes, series]);
   const scroller = useRef<HTMLDivElement>(null);
   const episodeCarousel = useRef<HTMLDivElement>(null);
+  const recentCarousel = useRef<HTMLDivElement>(null);
   const upcomingSection = useRef<HTMLDivElement>(null);
   const recentlyWatchedSection = useRef<HTMLElement>(null);
   const [stage, setStage] = useState(0);
@@ -345,11 +347,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
     setSeriesIndex(Math.max(0, Math.min(GYRO_SERIES.length - 1, index)));
     setSelectedEpisode(1);
   };
-  const compactTop = "max(90px, calc(env(safe-area-inset-top) + 76px))";
-  // Match the .40 card scale in both axes while reserving a separate text column.
-  const compactWidth = "min(32vw, 144px, 15.75dvh)";
-  const compactHeight = "min(56.888889vw, 256px, 28dvh)";
-  const episodeRowHeight = upcomingEpisodes.length ? "calc(min(42.666667dvh, 231.111111px) + 56px)" : "140px";
+  const episodeRowHeight = upcomingEpisodes.length ? "var(--episode-row-height)" : "140px";
   const expandedListTop = `calc(100% - max(7dvh, calc(env(safe-area-inset-bottom) + 24px)) - ${episodeRowHeight})`;
   const motion = 1;
 
@@ -358,7 +356,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
     onFeaturedReveal?.(featuredVisible);
   }, [featuredVisible, onFeaturedReveal]);
 
-  return <div ref={scroller} tabIndex={0} aria-label="Series viewer. Scroll or swipe once to reveal the featured card, more episodes, then recently watched." data-stage={stage} className="absolute inset-0 overflow-hidden overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+  return <div ref={scroller} tabIndex={0} aria-label="Series viewer. Scroll or swipe once to reveal the featured card, more episodes, then recently watched." data-stage={stage} className="series-viewer absolute inset-0 overflow-hidden overscroll-y-contain bg-[#100e0c] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
     <div>
       <div className="relative h-dvh">
         <div className="relative flex h-dvh w-full items-center justify-center overflow-hidden [isolation:isolate]">
@@ -381,11 +379,11 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
               selectSeries(seriesIndex + (event.deltaX > 0 ? 1 : -1));
             }
           }} style={{
-            width: `calc(${100 * (1 - card)}% + min(${80 * card}vw, ${360 * card}px, ${39.375 * card}dvh))`,
-            height: `calc(${100 * (1 - card)}% + min(${(80 * 16 / 9) * card}vw, ${640 * card}px, ${70 * card}dvh))`,
+            width: card ? "var(--featured-card-width)" : "100%",
+            height: card ? "var(--featured-card-height)" : "100%",
             transform: compact
-              ? `translate(calc(-50vw + 32px + min(16vw, 72px, 7.875dvh)), calc(-50dvh + ${compactTop} + min(28.444444vw, 128px, 14dvh))) scale(.40)`
-              : `translateY(${-featuredLift * 16}dvh) scale(${1 - featuredLift * .44})`,
+              ? "translate(var(--compact-translate-x), var(--compact-translate-y)) scale(var(--compact-scale))"
+              : featuredLift ? "translateY(calc(-1 * var(--featured-lift-y))) scale(var(--featured-lift-scale))" : "none",
           }}>
             <div ref={morphSurface} className="absolute inset-0 origin-center will-change-transform">
             {GYRO_SERIES.map((entry, index) => <article key={entry.id} ref={index === seriesIndex ? featuredCard : undefined} aria-label={`${entry.title} — Episode 01`} aria-hidden={index !== seriesIndex && !canSwipeSeries} inert={index !== seriesIndex && !canSwipeSeries} className="absolute inset-0 overflow-hidden bg-[#53331f] transition-[transform,opacity] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ borderRadius: `${24 * card}px`, containerType: "inline-size", boxShadow: `0 ${40 * card}px ${120 * card}px #0009, 0 0 0 1px rgb(255 222 177 / ${card * .16})`, transform: `translateX(calc(${(index - seriesIndex) * 100}% + ${(index - seriesIndex) * 20}px))`, opacity: index === seriesIndex || canSwipeSeries ? 1 : 0 }}>
@@ -401,7 +399,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
               <h1 className="text-[22px] font-bold tracking-[-.04em] text-white sm:text-[30px]">Episode 01</h1>
-              <span aria-hidden="true" className="grid size-[40px] shrink-0 place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-md"><PlayIcon className="size-[14px]" /></span>
+              <LiquidGlassSurface aria-hidden="true" className="shrink-0 rounded-full"><span className="grid size-[40px] place-items-center rounded-full"><PlayIcon className="size-[14px]" /></span></LiquidGlassSurface>
             </div>
             {card >= .999 && <button type="button" aria-label={index === seriesIndex ? `Play ${entry.title} Episode 01` : `View series ${index + 1}: ${entry.title}`} onClick={() => { if (index !== seriesIndex) selectSeries(index); else if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
           </article>)}
@@ -414,7 +412,11 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
             </button>
           </div>
           </div>
-          <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none" style={{ top: compactTop, left: `calc(32px + ${compactWidth} + 16px)`, opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, pointerEvents: compact ? "auto" : "none" }}>
+          {canSwipeSeries && <nav aria-label="Featured series" className="pointer-events-none absolute inset-x-[clamp(24px,4vw,80px)] top-1/2 z-[6] hidden -translate-y-1/2 items-center justify-between lg:flex">
+            <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex - 1)} disabled={seriesIndex === 0} aria-label="Previous series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">‹</span></LiquidGlassButton>
+            <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex + 1)} disabled={seriesIndex === GYRO_SERIES.length - 1} aria-label="Next series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">›</span></LiquidGlassButton>
+          </nav>}
+          <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none lg:right-auto lg:w-[min(32vw,390px)]" style={{ top: "var(--compact-top)", left: "var(--details-left)", opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, pointerEvents: compact ? "auto" : "none" }}>
             <p className="mb-2 text-[10px] font-semibold tracking-[.2em] text-[#f4d6b0]/75">RVNEXTGEN ORIGINAL</p>
             <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">{series.lead} <em className="font-normal">{series.emphasis}</em> {series.end}</h2>
             <p className="mt-2 text-[11px] font-medium text-white/55 sm:text-sm">Episode 01</p>
@@ -423,21 +425,27 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
               <button type="button" onClick={() => { if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-[#1a130e] transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 <PlayIcon className="size-3.5" /> Play
               </button>
-              <button type="button" aria-pressed={savedFeatured} onClick={() => setSavedSeries(previous => ({ ...previous, [series.id]: !savedFeatured }))} className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 text-xs font-medium text-white/90 backdrop-blur-md transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <LiquidGlassButton type="button" aria-pressed={savedFeatured} onClick={() => setSavedSeries(previous => ({ ...previous, [series.id]: !savedFeatured }))} className="inline-flex h-11 items-center justify-center gap-2 rounded-full px-4 text-xs font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 <svg aria-hidden="true" className="size-4" viewBox="0 0 24 24" fill={savedFeatured ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.8L6 21V4.75Z" /></svg>
                 {savedFeatured ? "Saved" : "Save"}
-              </button>
+              </LiquidGlassButton>
             </div>
           </aside>
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: stage === 0 ? 1 : 0 }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? `calc(${compactTop} + max(${compactHeight}, 224px) + 24px)` : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
+          <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? "calc(var(--compact-top) + max(var(--compact-card-height), 224px) + 24px)" : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
               <div ref={upcomingSection} className="relative">
                 <div className="mb-3 flex items-center justify-between gap-3 px-8">
                   <h3 className="text-[13px] font-semibold tracking-[.04em] text-white/85">More episodes</h3>
-                  {upcomingEpisodes.length > 0 && <EpisodePicker key={`${featuredLift}-${compact}`} selected={selectedEpisode} episodes={upcomingEpisodes} onSelect={selectEpisode} openBelow={compact} />}
+                  <div className="flex items-center gap-3">
+                    {upcomingEpisodes.length > 0 && <div className="hidden items-center gap-2 lg:flex">
+                      <LiquidGlassButton type="button" onClick={() => episodeCarousel.current?.scrollBy({ left: -400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll episodes left" className="grid size-11 place-items-center rounded-full text-xl text-white">‹</LiquidGlassButton>
+                      <LiquidGlassButton type="button" onClick={() => episodeCarousel.current?.scrollBy({ left: 400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll episodes right" className="grid size-11 place-items-center rounded-full text-xl text-white">›</LiquidGlassButton>
+                    </div>}
+                    {upcomingEpisodes.length > 0 && <EpisodePicker key={`${featuredLift}-${compact}`} selected={selectedEpisode} episodes={upcomingEpisodes} onSelect={selectEpisode} openBelow={compact} />}
+                  </div>
                 </div>
                 <div ref={episodeCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
                   {upcomingEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); setPlaying(selection); }} />)}
@@ -449,8 +457,10 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
                 </div>
               </div>
               <section ref={recentlyWatchedSection} aria-label="Recently watched" aria-hidden={!compact} inert={!compact} className="relative mx-auto w-full max-w-5xl pt-8 pb-[max(100px,calc(env(safe-area-inset-bottom)+80px))] transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none" style={{ opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 28}px)`, visibility: compact ? "visible" : "hidden" }}>
-                <h3 className="mb-4 px-8 text-[13px] font-semibold tracking-[.04em] text-white/85">Recently watched</h3>
-                {visibleRecentEpisodes.length > 0 ? <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
+                <div className="mb-4 flex items-center justify-between px-8"><h3 className="text-[13px] font-semibold tracking-[.04em] text-white/85">Recently watched</h3>
+                  {visibleRecentEpisodes.length > 0 && <div className="hidden items-center gap-2 lg:flex"><LiquidGlassButton type="button" onClick={() => recentCarousel.current?.scrollBy({ left: -400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll recently watched left" className="grid size-11 place-items-center rounded-full text-xl text-white">‹</LiquidGlassButton><LiquidGlassButton type="button" onClick={() => recentCarousel.current?.scrollBy({ left: 400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll recently watched right" className="grid size-11 place-items-center rounded-full text-xl text-white">›</LiquidGlassButton></div>}
+                </div>
+                {visibleRecentEpisodes.length > 0 ? <div ref={recentCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
                   {visibleRecentEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={setPlaying} />)}
                 </div> : <p className="px-8 py-6 text-sm text-white/50">Episodes you open will appear here.</p>}
               </section>

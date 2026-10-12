@@ -1,6 +1,7 @@
 import type { PosterItem } from "@/lib/data";
 import { InfoIcon, PlayIcon, StarIcon } from "./icons";
 import { PosterArt } from "./PosterArt";
+import { LiquidGlassButton } from "./LiquidGlassSurface";
 
 export function HeroBanner({ item }: { item: PosterItem }) {
   return (
@@ -9,7 +10,7 @@ export function HeroBanner({ item }: { item: PosterItem }) {
         <PosterArt gradient={item.gradient} title="" showTitle={false} />
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-black/80 via-black/20 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-10 xl:p-12">
-          <span className="w-fit rounded-full bg-white/10 px-3 py-1 text-xs font-medium tracking-wide text-white/70 backdrop-blur-sm">
+          <span className="w-fit rounded-full bg-black/50 px-3 py-1 text-xs font-medium tracking-wide text-white/70">
             Featured
           </span>
           <h1 className="max-w-xl text-5xl leading-none font-black tracking-tight text-white italic [text-shadow:0_2px_20px_rgba(0,0,0,0.6)]">
@@ -29,13 +30,13 @@ export function HeroBanner({ item }: { item: PosterItem }) {
               <PlayIcon className="h-4 w-4" />
               Play
             </button>
-            <button
+            <LiquidGlassButton
               type="button"
-              className="flex items-center gap-2 rounded-lg bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+              className="flex min-h-11 items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
             >
               <InfoIcon className="h-4 w-4" />
               More Info
-            </button>
+            </LiquidGlassButton>
           </div>
         </div>
       </div>

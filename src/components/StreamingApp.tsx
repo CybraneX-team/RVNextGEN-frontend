@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import { useAuth } from "./AuthProvider";
 import { ChevronRightIcon, GyroIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
 import GyroPage from "./GyroPage";
+import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 import { getDeviceId } from "@/lib/device";
 import {
   addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
@@ -195,7 +196,7 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={`Playing ${title}`} onClick={onClose}>
       <div className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl bg-black" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} aria-label="Close player" className="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full bg-black/60 text-[18px] text-white hover:bg-black/80">✕</button>
+        <LiquidGlassButton onClick={onClose} aria-label="Close player" wrapperClassName="absolute top-2 right-2 z-10" className="grid size-11 place-items-center rounded-full text-[18px] text-white">✕</LiquidGlassButton>
         {state.status === "loading" ? <div className="grid size-full place-items-center text-white/60">Loading…</div>
           : state.status === "error" ? <div className="grid size-full place-items-center px-6 text-center text-[13px] text-[#ff8f8f]">{state.message}</div>
           : <iframe src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />}
@@ -233,12 +234,12 @@ function SeasonPicker({ value, count, onChange }: { value: number; count: number
       trigger.current?.focus();
     }
   }}>
-    <button ref={trigger} type="button" aria-label={`Select season, Season ${value}`} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(current => !current)} onKeyDown={event => {
+    <LiquidGlassButton ref={trigger} type="button" aria-label={`Select season, Season ${value}`} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(current => !current)} onKeyDown={event => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); }
-    }} className="flex h-11 items-center gap-4 rounded-full border border-white/15 bg-white/8 px-5 text-[16px] font-medium tracking-[-.04em] text-white backdrop-blur-sm transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/50">
+    }} className="flex h-11 items-center gap-4 rounded-full px-5 text-[16px] font-medium tracking-[-.04em] text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white/50">
       Season {value}<ChevronRightIcon className={`size-4 text-white/65 transition-transform ${open ? "-rotate-90" : "rotate-90"}`} />
-    </button>
-    {open && <div id={id} role="menu" aria-label="Select season" className="absolute top-full left-0 z-30 mt-2 min-w-[180px] overflow-hidden rounded-2xl border border-white/10 bg-[#202121]/95 p-1.5 shadow-[0_12px_36px_#0008] backdrop-blur-xl">
+    </LiquidGlassButton>
+    {open && <LiquidGlassSurface regular id={id} role="menu" aria-label="Select season" className="absolute top-full left-0 z-30 mt-2 min-w-[180px] overflow-hidden rounded-2xl p-1.5">
       {Array.from({ length: count }, (_, index) => <button key={index} ref={element => { options.current[index] = element; }} type="button" role="menuitemradio" aria-checked={value === index + 1} tabIndex={-1} onClick={() => { onChange(index + 1); setOpen(false); trigger.current?.focus(); }} onKeyDown={event => {
         let next: number | undefined;
         if (event.key === "ArrowDown") next = (index + 1) % count;
@@ -250,7 +251,7 @@ function SeasonPicker({ value, count, onChange }: { value: number; count: number
         Season {index + 1}
         {value === index + 1 && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4 text-[#c0d8cc]"><path d="m5 12 4 4L19 6" strokeLinecap="round" strokeLinejoin="round" /></svg>}
       </button>)}
-    </div>}
+    </LiquidGlassSurface>}
   </div>;
 }
 
@@ -308,10 +309,10 @@ function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }:
         <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_25%,#0e0d0f_100%)]" />
         <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,#0e0d0f_0%,transparent_50%),linear-gradient(180deg,transparent_35%,#0e0d0f_100%)] lg:block" />
       </div>
-      <button onClick={closeMovie} aria-label="Back to browse" className="absolute top-5 left-[23px] z-10 grid size-9 place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-sm hover:bg-white/15 lg:top-8 lg:left-[60px]"><ChevronRightIcon className="size-5 rotate-180" /></button>
+      <LiquidGlassButton onClick={closeMovie} aria-label="Back to browse" wrapperClassName="absolute top-5 left-[23px] z-10 lg:top-8 lg:left-[60px]" className="grid size-11 place-items-center rounded-full text-white"><ChevronRightIcon className="size-5 rotate-180" /></LiquidGlassButton>
       <div className={`relative px-[23px] lg:max-w-[660px] lg:px-[60px] lg:pt-[210px] ${isSeries ? "pt-[200px]" : "pt-[300px]"}`}>
         <div className="flex h-[60px] items-center gap-[10px]">
-          <button aria-label={`Play ${film.title}`} onClick={() => setPlaying(true)} className="grid size-[60px] place-items-center rounded-full bg-black/25 text-white/85 backdrop-blur-sm hover:bg-white/15"><PlayIcon className="size-[27px]" /></button>
+          <LiquidGlassButton aria-label={`Play ${film.title}`} onClick={() => setPlaying(true)} className="grid size-[60px] place-items-center rounded-full text-white"><PlayIcon className="size-[27px]" /></LiquidGlassButton>
           <button aria-label={saved ? `Remove ${film.title} from library` : `Save ${film.title} to library`} aria-pressed={saved} onClick={onSave} className="grid size-11 place-items-center rounded-full text-white hover:bg-white/10">
             {saved ? <svg className="size-[27px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="m7.5 12 3 3 6-6" fill="none" stroke="#17332d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : <svg className="size-[27px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v10M7 12h10" strokeLinecap="round" /></svg>}
           </button>
@@ -335,9 +336,9 @@ function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }:
         <FilmRow title="Explore Other Films" items={explore} onSelect={onSelect} />
       </>}
     </div>
-    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation">
+    <LiquidGlassSurface regular className="fixed inset-x-0 bottom-0 z-20 lg:hidden"><nav className="flex h-[121px] items-center justify-center gap-[clamp(12px,calc((100vw-272px)/3),43px)] px-4 pt-[26px] pb-[25px]" aria-label="Main navigation">
       <NavigationItems page="" navigate={onNavigate} />
-    </nav>
+    </nav></LiquidGlassSurface>
   </main>;
 }
 
@@ -488,13 +489,13 @@ export default function StreamingApp() {
   }
 
   return <div className="min-h-screen bg-[radial-gradient(ellipse_at_35%_0%,#09231f_0%,#0b1715_22%,#0c0c0d_52%)] lg:bg-[radial-gradient(ellipse_at_65%_0%,#122823_0,#101917_25%,#0c0d0e_65%)]">
-    <aside className="fixed inset-y-0 left-0 z-[25] hidden w-[200px] flex-col border-r border-[#ffffff07] bg-[#0c100fee] px-6 py-[37px] shadow-[inset_-1px_0_0_#ffffff06,8px_0_40px_#09231f12] backdrop-blur-xl lg:flex min-[1450px]:w-[220px] min-[1450px]:px-7">
+    <LiquidGlassSurface regular className="fixed inset-y-0 left-0 z-[25] hidden w-[200px] lg:block min-[1450px]:w-[220px]"><aside className="flex h-full flex-col px-6 py-[37px] min-[1450px]:px-7">
       <button className="flex items-center bg-transparent p-0 text-left text-[22px] font-bold tracking-[-1px]" onClick={() => navigate("Home")} aria-label="Streamline home"><span className="mr-2 text-[33px] leading-none text-[#c8e0d5] italic">s</span>streamline<span className="text-[#a3cdb9]">.</span></button>
       <span className="mt-[62px] mb-[22px] ml-3 text-[8px] tracking-[2px] text-[#56615b]">YOUR SPACE</span>
       <nav className="flex flex-col gap-[10px]"><NavigationItems page={page} navigate={navigate} /></nav>
       <Link href="/creator" className="mt-[18px] flex items-center gap-[14px] rounded-[7px] px-3 py-2 text-[15px] font-medium text-[#c8e0d5] transition-colors hover:bg-[#c0d8cc]/10"><PlayIcon className="size-[18px]" />Creator Lab</Link>
       <div className="mt-auto text-[9px] leading-loose text-[#6d7871]"><span className="mr-[5px] inline-block size-1 rounded-full bg-[#91b09e]" /> A little escape. Anytime.<small className="mt-[15px] block text-[9px] text-[#424d46]">© 2026 Streamline</small></div>
-    </aside>
+    </aside></LiquidGlassSurface>
     <main className="overflow-hidden pt-[19px] pb-40 lg:ml-[200px] lg:max-w-[1900px] lg:px-[42px] lg:pt-0 lg:pb-[30px] min-[1450px]:ml-[220px] min-[1450px]:px-[60px]">
       <header className="hidden h-[101px] items-center justify-between text-[13px] text-[#778b81] lg:flex">
         <div>Discover your next <span className="text-[#c4cec8]">great watch.</span></div>
@@ -584,7 +585,7 @@ export default function StreamingApp() {
         {page === "Search" && !searching && query.trim() && results.length === 0 && <p className="py-[55px] text-center text-[#a1aba6]">No titles found. Try another title or genre.</p>}
       </section>}
     </main>
-    <nav className="fixed inset-x-0 bottom-0 z-20 flex h-[121px] items-center justify-center gap-[clamp(10px,calc((100vw-300px)/4),43px)] bg-[linear-gradient(180deg,rgba(14,13,15,0)_0%,#0E0D0F_41.74%)] px-4 pt-[26px] pb-[25px] backdrop-blur-[2px] lg:hidden" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav>
+    <LiquidGlassSurface regular className="fixed inset-x-0 bottom-0 z-20 lg:hidden"><nav className="flex h-[121px] items-center justify-center gap-[clamp(10px,calc((100vw-300px)/4),43px)] px-4 pt-[26px] pb-[25px]" aria-label="Main navigation"><NavigationItems page={page} navigate={navigate} /></nav></LiquidGlassSurface>
 
   </div>;
 }

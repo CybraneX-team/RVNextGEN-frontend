@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DesertParallax from "./DesertParallax";
 import { useAuth } from "./AuthProvider";
+import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 
 export default function GyroPage({ onClose }: { onClose?: () => void }) {
   const { user } = useAuth();
@@ -84,24 +85,23 @@ export default function GyroPage({ onClose }: { onClose?: () => void }) {
     return () => { document.body.style.overflow = previous; };
   }, []);
 
-  const backClass = "grid size-11 shrink-0 place-items-center rounded-full border border-white/15 bg-black/25 text-white/90 backdrop-blur-xl hover:bg-black/40";
   const backIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
   return <section ref={viewer} aria-label="Immersive series viewer" className="fixed inset-0 z-50 h-dvh w-full overflow-hidden bg-[#09100d] text-white">
-    {onClose && <button type="button" onClick={onClose} aria-label="Back to home" className={`absolute left-4 top-[max(16px,env(safe-area-inset-top))] z-30 ${backClass}`}>{backIcon}</button>}
+    {onClose && <LiquidGlassButton type="button" onClick={onClose} aria-label="Back to home" wrapperClassName="absolute left-4 top-[max(16px,env(safe-area-inset-top))] z-30" className="grid size-11 place-items-center rounded-full text-white">{backIcon}</LiquidGlassButton>}
     <div inert={!featuredVisible} className={`pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-4 bg-gradient-to-b from-black/25 to-transparent px-4 pt-[max(16px,env(safe-area-inset-top))] pb-12 transition-opacity duration-500 sm:px-6 ${featuredVisible ? "opacity-100" : "opacity-0"}`} aria-hidden={!featuredVisible}>
       <span aria-label="RV NextGen" className={`select-none whitespace-nowrap text-[18px] leading-8 font-bold tracking-[-.055em] text-white sm:text-[21px] ${onClose ? "ml-14" : ""}`}>
         RV<span className="font-medium text-[#e7b580]">NEXT</span><span className="font-light tracking-[-.07em] text-white/75">GEN</span>
       </span>
-      <Link href="/profile" onClick={() => { try { sessionStorage.setItem("profile-return-path", `${location.pathname}${location.search}${location.hash}`); } catch { /* Browser storage may be disabled. */ } window.dispatchEvent(new Event("gyro:profile-open")); }} aria-label="Open profile" className="pointer-events-auto grid size-8 place-items-center overflow-hidden rounded-full border border-white/20 bg-black/30 text-sm font-semibold text-white shadow-lg backdrop-blur-xl transition hover:bg-black/45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+      <LiquidGlassSurface className="pointer-events-auto rounded-full"><Link href="/profile" onClick={() => { try { sessionStorage.setItem("profile-return-path", `${location.pathname}${location.search}${location.hash}`); } catch { /* Browser storage may be disabled. */ } window.dispatchEvent(new Event("gyro:profile-open")); }} aria-label="Open profile" className="grid size-11 place-items-center overflow-hidden rounded-full text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
         {user?.avatarUrl && !avatarFailed ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setAvatarFailed(true)} className="size-full object-cover" /> : <span>{(user?.displayName?.trim().split(/\s+/).slice(0, 2).map(name => name[0]).join("") || user?.email?.[0] || "U").toUpperCase()}</span>}
-      </Link>
+      </Link></LiquidGlassSurface>
     </div>
     <div className="absolute inset-0 overflow-hidden">
       <DesertParallax onFeaturedReveal={onFeaturedReveal} />
     </div>
     {motionPermission && <div className="pointer-events-none absolute inset-x-0 bottom-[max(20px,env(safe-area-inset-bottom))] z-30 flex flex-col items-center gap-2">
       {motionMessage && <p role="status" className="rounded-full bg-black/60 px-4 py-2 text-xs text-white/80">{motionMessage}</p>}
-      <button type="button" onClick={() => void enableMotion()} className="pointer-events-auto rounded-full border border-white/20 bg-black/30 px-5 py-3 text-xs text-white backdrop-blur-xl">Allow motion access</button>
+      <LiquidGlassButton type="button" onClick={() => void enableMotion()} className="min-h-11 rounded-full px-5 py-3 text-xs text-white">Allow motion access</LiquidGlassButton>
     </div>}
   </section>;
 }

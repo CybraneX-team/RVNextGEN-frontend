@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { HomeIcon, LibraryIcon, SearchIcon } from "./icons";
+import { LiquidGlassSurface } from "./LiquidGlassSurface";
 
 const navItems = [
   { label: "Home", icon: HomeIcon },
@@ -13,7 +14,7 @@ export function BottomNav() {
   const [active, setActive] = useState<string>("Home");
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/90 backdrop-blur-lg lg:hidden">
+    <LiquidGlassSurface regular className="fixed inset-x-0 bottom-0 z-40 lg:hidden"><nav>
       <div className="flex items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {navItems.map(({ label, icon: Icon }) => {
           const isActive = active === label;
@@ -40,6 +41,6 @@ export function BottomNav() {
           <span className={`text-[11px] ${active === "Profile" ? "text-white" : "text-white/40"}`}>Profile</span>
         </button>
       </div>
-    </nav>
+    </nav></LiquidGlassSurface>
   );
 }

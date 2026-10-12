@@ -42,7 +42,7 @@ export default function PublishDialog({ jobId, defaultTitle, token, onClose, onP
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-3 backdrop-blur-sm sm:p-8" role="dialog" aria-modal="true" aria-label="Publish film" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-3 sm:p-8" role="dialog" aria-modal="true" aria-label="Publish film" onClick={onClose}>
       <div className="mt-5 w-full max-w-lg rounded-[22px] border border-[#d9a26d]/15 bg-[#171517] p-4 shadow-2xl sm:mt-10 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[18px] font-semibold text-white">Publish film</h2>
