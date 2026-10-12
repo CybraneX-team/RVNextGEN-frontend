@@ -1,1 +1,70 @@
 @import "tailwindcss";
+
+/* Tint and edge geometry for @samasante/liquid-glass surfaces. The package
+   provides the refraction and frost; these rules only set their visible shell. */
+.liquid-surface-clear {
+  background: rgb(255 255 255 / .14);
+  border: 1px solid rgb(255 255 255 / .3);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .28), 0 6px 22px rgb(0 0 0 / .18);
+}
+.liquid-surface-regular {
+  background: rgb(34 32 33 / .65);
+  border: 1px solid rgb(255 255 255 / .22);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .22), 0 6px 22px rgb(0 0 0 / .22);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .liquid-surface-clear, .liquid-surface-regular { background: #242426; border-color: #fff; }
+}
+
+.auth-field-glass { transition: border-color .2s ease, box-shadow .2s ease; }
+.auth-field-glass:hover { border-color: rgb(255 255 255 / .55); }
+.auth-field-glass:focus-within {
+  border-color: rgb(255 255 255 / .9);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .38), 0 0 0 3px rgb(255 255 255 / .16), 0 7px 28px rgb(0 0 0 / .24);
+}
+
+.liquid-surface-clear button, .liquid-surface-regular button {
+  transition: transform .18s ease;
+}
+.liquid-surface-clear button:active, .liquid-surface-regular button:active {
+  transform: scale(.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .liquid-surface-clear button, .liquid-surface-regular button { transition: none; }
+  .liquid-surface-clear button:active, .liquid-surface-regular button:active { transform: none; }
+}
+
+.series-viewer {
+  --featured-card-width: min(80vw, 360px, 39.375dvh);
+  --featured-card-height: min(142.222222vw, 640px, 70dvh);
+  --featured-lift-y: 16dvh;
+  --featured-lift-scale: .56;
+  --compact-top: max(90px, calc(env(safe-area-inset-top) + 76px));
+  --compact-card-width: min(32vw, 144px, 15.75dvh);
+  --compact-card-height: min(56.888889vw, 256px, 28dvh);
+  --compact-scale: .4;
+  --compact-translate-x: calc(-50vw + 32px + min(16vw, 72px, 7.875dvh));
+  --compact-translate-y: calc(-50dvh + var(--compact-top) + min(28.444444vw, 128px, 14dvh));
+  --details-left: calc(32px + var(--compact-card-width) + 16px);
+  --episode-row-height: calc(min(42.666667dvh, 231.111111px) + 56px);
+}
+.series-episode-card { width: min(24dvh, 130px); }
+
+@media (min-width: 1024px) {
+  .series-viewer {
+    --featured-card-width: min(31vw, 430px, 39.375dvh);
+    --featured-card-height: min(55.111111vw, 764.444444px, 70dvh);
+    --featured-lift-y: 18dvh;
+    --featured-lift-scale: .6;
+    --compact-top: max(110px, calc(env(safe-area-inset-top) + 80px));
+    --compact-card-width: min(15.5vw, 215px, 19.6875dvh);
+    --compact-card-height: min(27.555556vw, 382.222222px, 35dvh);
+    --compact-scale: .5;
+    --compact-center-x: max(300px, calc(50vw - 220px));
+    --compact-translate-x: calc(-50vw + var(--compact-center-x));
+    --compact-translate-y: calc(-50dvh + var(--compact-top) + min(13.777778vw, 191.111111px, 17.5dvh));
+    --details-left: calc(var(--compact-center-x) + min(7.75vw, 107.5px, 9.84375dvh) + 32px);
+    --episode-row-height: calc(min(21.333333vw, 312.888889px, 32dvh) + 56px);
+  }
+  .series-episode-card { width: min(12vw, 176px, 18dvh); }
+}

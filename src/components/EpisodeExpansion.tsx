@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 
 export type EpisodeSelection = { episode: number; origin: HTMLElement };
 
@@ -196,6 +197,15 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
     };
   }, [selection, onClose]);
 
+  function skipBy(seconds: number) {
+    const current = player.current?.getCurrentTime() ?? 0;
+    const length = player.current?.getDuration() ?? 0;
+    if (length <= 0) return;
+    const next = Math.max(0, Math.min(length, current + seconds));
+    player.current?.seekTo(next, true);
+    setPosition(next);
+  }
+
   return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onCancel={event => { event.preventDefault(); dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
     <div ref={backdrop} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-transparent backdrop-blur-none" />
     <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute overflow-hidden bg-[#302116] [&>*]:origin-top-left">
@@ -203,28 +213,31 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
       {videoId && <div ref={playerMount} className="absolute inset-0 z-[2] [&_iframe]:size-full [&_iframe]:border-0" />}
     </div>
     <div ref={controls} className="absolute inset-0 z-20 opacity-0">
-      <button type="button" autoFocus onClick={() => dismiss.current()} aria-label="Close video and return to episodes" title="Back to episodes" className="pointer-events-auto absolute top-[max(16px,env(safe-area-inset-top))] left-4 grid size-12 place-items-center rounded-full border border-white/25 bg-black/55 text-white shadow-[0_4px_24px_#0008] backdrop-blur-xl transition-colors hover:bg-black/75 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+      <div className="pointer-events-auto absolute top-[max(16px,env(safe-area-inset-top))] left-4"><LiquidGlassButton type="button" autoFocus onClick={() => dismiss.current()} aria-label="Close video and return to episodes" title="Back to episodes" className="grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
         <svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m14 6-6 6 6 6" /></svg>
-      </button>
-      {(!videoId || !playing) && <div role="status" className="pointer-events-none absolute inset-x-6 top-1/2 -translate-y-1/2 text-center">
-        {videoId && playerReady && !playerError && <button type="button" onClick={() => player.current?.playVideo()} aria-label="Play video" className="pointer-events-auto mx-auto grid size-16 place-items-center rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-xl">
-          <svg aria-hidden="true" className="size-6" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-        </button>}
-        <p className="mt-4 text-sm text-white/80">{playerError || (videoId ? playerReady ? "Paused" : "Loading video…" : "Video coming soon")}</p>
+      </LiquidGlassButton></div>
+      {playerError && <p role="alert" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">{playerError}</p>}
+      {videoId && !playerReady && !playerError && <p role="status" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">Loading video…</p>}
+      {!playerError && <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-[clamp(12px,5vw,52px)] px-4">
+        <LiquidGlassButton type="button" onClick={() => skipBy(-10)} disabled={!playerReady} aria-label="Rewind 10 seconds" className="grid size-[58px] place-items-center rounded-full text-white disabled:opacity-40 sm:size-[62px]">
+          <svg aria-hidden="true" className="size-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none">10</text></svg>
+        </LiquidGlassButton>
+        <LiquidGlassButton type="button" onClick={() => playing ? player.current?.pauseVideo() : player.current?.playVideo()} disabled={!playerReady} aria-label={playing ? "Pause" : "Play"} className="grid size-[86px] place-items-center rounded-full text-white disabled:opacity-40 sm:size-[104px]">
+          {playing ? <svg aria-hidden="true" className="size-12 sm:size-14" viewBox="0 0 100 100" fill="currentColor"><rect x="35" y="30" width="10" height="40" rx="2" /><rect x="55" y="30" width="10" height="40" rx="2" /></svg> : <svg aria-hidden="true" className="size-12 sm:size-14" viewBox="0 0 100 100" fill="currentColor"><path d="M37 27Q37 24 40 26L75 47Q78 50 75 53L40 74Q37 76 37 73Z" /></svg>}
+        </LiquidGlassButton>
+        <LiquidGlassButton type="button" onClick={() => skipBy(10)} disabled={!playerReady} aria-label="Forward 10 seconds" className="grid size-[58px] place-items-center rounded-full text-white disabled:opacity-40 sm:size-[62px]">
+          <svg aria-hidden="true" className="size-8 -scale-x-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none" transform="translate(24 0) scale(-1 1)">10</text></svg>
+        </LiquidGlassButton>
       </div>}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-6 pt-20 pb-[max(24px,env(safe-area-inset-bottom))] sm:px-10">
-        <p className="mb-1 text-sm text-white/65">{seriesTitle}</p>
-        <h2 className="mb-5 text-xl font-bold">Episode {String(selection.episode).padStart(2, "0")}</h2>
-        <input type="range" aria-label="Playback position" min={0} max={duration || 0} step={0.1} value={Math.min(position, duration || 0)} disabled={!playerReady || !duration} onChange={event => { const value = Number(event.target.value); setPosition(value); player.current?.seekTo(value, true); }} className="block h-1 w-full accent-white disabled:opacity-40" />
-        <div className="mt-4 flex items-center gap-4 text-white/85">
-          <button type="button" disabled={!playerReady} onClick={() => playing ? player.current?.pauseVideo() : player.current?.playVideo()} aria-label={playing ? "Pause" : "Play"} className="grid size-11 place-items-center rounded-full bg-white/10 disabled:opacity-40">
-            {playing ? <svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zm6 0h4v14h-4z" /></svg> : <svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>}
-          </button>
-          <span className="text-xs tabular-nums">{videoId ? `${timeLabel(position)} / ${timeLabel(duration)}` : "--:-- / --:--"}</span>
-          <button type="button" disabled={!playerReady} onClick={() => { if (muted) { player.current?.unMute(); player.current?.setVolume(100); } else player.current?.mute(); setMuted(!muted); }} aria-label={muted ? "Unmute" : "Mute"} className="ml-auto grid size-11 place-items-center rounded-full bg-white/10 disabled:opacity-40">
-            <svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></svg>
-          </button>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-6 pt-20 pb-[max(24px,env(safe-area-inset-bottom))] sm:px-10">
+        <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-sm text-white/75">{seriesTitle}</p><h2 className="text-xl font-bold">Episode {String(selection.episode).padStart(2, "0")}</h2></div>
+          <LiquidGlassButton type="button" disabled={!playerReady} onClick={() => { if (muted) { player.current?.unMute(); player.current?.setVolume(100); } else player.current?.mute(); setMuted(!muted); }} aria-label={muted ? "Unmute" : "Mute"} className="grid size-11 shrink-0 place-items-center rounded-full text-white disabled:opacity-40"><svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></svg></LiquidGlassButton>
         </div>
+        <LiquidGlassSurface className="flex h-[26px] items-center rounded-[7px] px-3">
+          <input type="range" aria-label="Playback position" min={0} max={duration || 0} step={0.1} value={Math.min(position, duration || 0)} disabled={!playerReady || !duration} onChange={event => { const value = Number(event.target.value); setPosition(value); player.current?.seekTo(value, true); }} className="h-4 w-full cursor-pointer accent-white disabled:cursor-default disabled:opacity-40" />
+        </LiquidGlassSurface>
+        <p className="mt-2 text-right text-xs tabular-nums text-white/85">{videoId ? `${timeLabel(position)} / ${timeLabel(duration)}` : "--:-- / --:--"}</p>
+        {!videoId && <p role="status" className="mt-2 text-center text-sm text-white/75">Video coming soon</p>}
       </div>
     </div>
   </dialog>;

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth, AuthGate } from "@/components/AuthProvider";
 import { useState } from "react";
+import { LiquidGlassButton } from "@/components/LiquidGlassSurface";
 
 function ProfileContent() {
   const { user, signOut } = useAuth();
@@ -20,7 +21,7 @@ function ProfileContent() {
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_-10%,rgba(49,86,68,.42)_0%,transparent_38%),radial-gradient(ellipse_at_95%_48%,rgba(123,66,35,.10),transparent_38%)]" />
     <div className="relative mx-auto w-full max-w-lg">
       <header className="flex h-12 items-center gap-3">
-        <button type="button" onClick={() => {
+        <LiquidGlassButton type="button" onClick={() => {
           let returnPath = "/";
           try {
             const saved = sessionStorage.getItem("profile-return-path");
@@ -31,9 +32,9 @@ function ProfileContent() {
           window.setTimeout(() => {
             if (window.location.pathname === "/profile") router.replace(returnPath);
           }, 400);
-        }} aria-label="Go back" className="grid size-11 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[.035] text-white/90 backdrop-blur-xl transition hover:border-white/20 hover:bg-white/[.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+        }} aria-label="Go back" className="grid size-11 shrink-0 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="size-5"><path d="m14 6-6 6 6 6" /></svg>
-        </button>
+        </LiquidGlassButton>
         <span className="text-[14px] font-semibold tracking-[-.2px] text-white/85">Profile</span>
       </header>
       <section className="mt-8 flex flex-col items-center rounded-[26px] border border-white/[.07] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.012))] px-5 pb-7 pt-7 text-center shadow-[0_24px_80px_#0004] sm:mt-10 sm:px-8 sm:pb-9 sm:pt-9">
