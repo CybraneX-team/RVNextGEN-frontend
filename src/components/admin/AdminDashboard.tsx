@@ -440,10 +440,10 @@ function SettingsPanel({ token }: { token: string }) {
           <h3 className="text-[15px] font-semibold text-white">Viewer Wallet — pricing rules</h3>
           <p className="mt-1 text-[13px] text-white/45">Episodes have a credit price. The local value of one credit determines what viewers pay. An episode-specific country price takes priority.</p>
         </div>
-        <SettingField settingKey="viewer.pricing.coinsPerMinute" label="Coins per minute" value={get("viewer.pricing.coinsPerMinute") ?? 1} token={token} kind="float" onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.coinsPerMinute" label="Credits per minute" value={get("viewer.pricing.coinsPerMinute") ?? 1} token={token} kind="float" onSaved={reload} />
         <SettingField settingKey="viewer.pricing.rounding" label="Rounding" hint="fractional minutes" value={get("viewer.pricing.rounding") ?? "ceil"} token={token} kind="select" options={["ceil", "round", "floor"]} onSaved={reload} />
-        <SettingField settingKey="viewer.pricing.minCoins" label="Minimum coins / paid episode" value={get("viewer.pricing.minCoins") ?? 1} token={token} kind="int" onSaved={reload} />
-        <SettingField settingKey="viewer.pricing.maxCoins" label="Maximum coins / episode" hint="0 = no cap" value={get("viewer.pricing.maxCoins") ?? 0} token={token} kind="int" onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.minCoins" label="Minimum credits / paid episode" value={get("viewer.pricing.minCoins") ?? 1} token={token} kind="int" onSaved={reload} />
+        <SettingField settingKey="viewer.pricing.maxCoins" label="Maximum credits / episode" hint="0 = no cap" value={get("viewer.pricing.maxCoins") ?? 0} token={token} kind="int" onSaved={reload} />
         <SettingField settingKey="viewer.wallet.inrPerCoinPaise" label="India: ₹ per episode credit" value={get("viewer.wallet.inrPerCoinPaise") ?? 100} token={token} kind="rupees" onSaved={reload} />
         <RegionalCreditRates token={token} rates={(get("viewer.credit.regionRates") ?? {}) as Record<string, { currency: string; amountMinor: number }>} onSaved={reload} />
       </section>
@@ -502,6 +502,7 @@ function WalletPanel({ token }: { token: string }) {
   return <div className="space-y-7">
     <section>
       <h3 className="mb-3 text-[15px] font-semibold">Wallet top-up packs</h3>
+      <p className="mb-3 text-[12px] text-white/50">INR packs are automatically converted for US and UAE viewers. Creating an active USD or AED pack replaces the automatic packs for that currency.</p>
       <div className="grid grid-cols-2 gap-3 rounded-xl border border-white/8 p-4 sm:grid-cols-5">
         <label><span className="text-[11px] text-white/45">Name</span><input className={smallInput} value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label><span className="text-[11px] text-white/45">Currency</span><select className={smallInput} value={currency} onChange={(e) => setCurrency(e.target.value as "INR" | "USD" | "AED")}><option value="INR">INR</option><option value="USD">USD</option><option value="AED">AED</option></select></label>

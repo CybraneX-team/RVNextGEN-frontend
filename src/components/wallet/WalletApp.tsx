@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import {
-  confirmStripe, startTopUp, walletBalance, walletHistory, walletPacks,
-  type CoinTxn, type Gateway, type WalletPack,
+  confirmStripe, startTopUp, walletBalance, walletHistory, walletPacks, walletRegion,
+  type CoinTxn, type Gateway, type WalletPack, type WalletRegion,
 } from "@/lib/wallet";
 import { formatMoney } from "@/lib/money";
 
@@ -15,6 +15,7 @@ export default function WalletApp() {
   const { accessToken, user } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
   const [currency, setCurrency] = useState("INR");
+  const [region, setRegion] = useState<WalletRegion | null>(null);
   const [packs, setPacks] = useState<WalletPack[] | null>(null);
   const [history, setHistory] = useState<CoinTxn[]>([]);
   const [provider, setProvider] = useState<Gateway>("razorpay");
@@ -37,6 +38,7 @@ export default function WalletApp() {
     if (!accessToken) return;
     let live = true;
     walletPacks(accessToken).then((p) => { if (live) setPacks(p); }).catch(() => {});
+    walletRegion(accessToken).then((r) => { if (live) setRegion(r); }).catch(() => {});
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload fetches then sets state; not a synchronous cascade
     void reload();
     return () => { live = false; };
@@ -103,6 +105,7 @@ export default function WalletApp() {
           <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">{currency} wallet balance</p>
           <p className="mt-2 text-[40px] font-semibold tracking-[-1px]">{balance == null ? "…" : formatMoney(balance, currency)}</p>
           <p className="mt-1 text-[12px] text-white/40">Use your wallet to unlock episodes for one year.</p>
+          {region && <p className="mt-2 text-[12px] text-white/50">Region: {region.detectedCountryCode ?? 'unknown'} · {region.source === 'unknown' ? 'Showing INR until your country can be determined' : region.source === 'test' ? 'Development test region' : `Detected from ${region.source === 'ip' ? 'network location' : 'network edge'}`}</p>}
         </section>
 
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300/15 bg-red-300/[.06] px-4 py-3 text-[13px] text-[#ff9b9b]">{error}</p>}

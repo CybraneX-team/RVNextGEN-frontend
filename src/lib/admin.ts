@@ -91,6 +91,7 @@ export type UpdateContentBody = {
   /** Viewer Wallet: paid flag + optional per-episode coin price (null clears the override → duration-based). */
   isPremium?: boolean;
   priceCoinsOverride?: number | null;
+  basePricePaise?: number | null;
 };
 export const updateContent = (id: string, body: UpdateContentBody, token: string) =>
   apiFetch<ApiContent>(`content/${id}`, { method: "PATCH", body, token });

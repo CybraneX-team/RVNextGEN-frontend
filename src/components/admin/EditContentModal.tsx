@@ -30,7 +30,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     getContent(id, token).then((c) => {
       if (!live) return;
       setItem(c);
-      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "", isPremium: c.isPremium, basePrice: c.basePricePaise != null ? (c.basePricePaise / 100).toFixed(2) : "", usdPrice: "", aedPrice: "" });
+      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "", isPremium: c.isPremium, basePrice: c.priceCoinsOverride != null ? String(c.priceCoinsOverride) : c.basePricePaise != null ? String(c.basePricePaise / 100) : "", usdPrice: "", aedPrice: "" });
       if (c.type === "EPISODE") void adminRegionalPrices(id, token).then((r) => { if (live) setFields((f) => f ? { ...f, usdPrice: r.regionalPrices.find((p) => p.countryCode === "US") ? (r.regionalPrices.find((p) => p.countryCode === "US")!.amountMinor / 100).toFixed(2) : "", aedPrice: r.regionalPrices.find((p) => p.countryCode === "AE") ? (r.regionalPrices.find((p) => p.countryCode === "AE")!.amountMinor / 100).toFixed(2) : "" } : f); }).catch(() => {});
       setCategoryIds(c.categories.map((x) => x.id));
     }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Couldn’t load this title."); });
@@ -50,8 +50,8 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     setBusy(true); setError(null);
     try {
       const toMinor = (value: string) => value.trim() ? Math.round(Number(value) * 100) : null;
-      if (fields.isPremium && (fields.basePrice && (!Number.isFinite(Number(fields.basePrice)) || Number(fields.basePrice) <= 0))) throw new Error("INR price must be positive");
-      const monetization = { isPremium: fields.isPremium, basePricePaise: fields.isPremium ? toMinor(fields.basePrice) : null };
+      if (fields.isPremium && fields.basePrice && (!Number.isInteger(Number(fields.basePrice)) || Number(fields.basePrice) <= 0)) throw new Error("Episode credits must be a positive whole number");
+      const monetization = { isPremium: fields.isPremium, priceCoinsOverride: fields.isPremium && fields.basePrice.trim() ? Number(fields.basePrice) : null, basePricePaise: null };
       await updateContent(id, isEpisode ? {
         // Episodes keep it minimal — the same fields used when adding one.
         title: fields.title.trim(),
@@ -140,7 +140,7 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
                   </div>
                 </>
               )}
-              {/* Viewer Wallet monetization: INR base with optional regional overrides. */}
+              {/* Episode credits with optional per-episode country overrides. */}
               <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
                 <label className="flex items-center gap-2 text-[13px] text-white/80">
                   <input type="checkbox" checked={fields.isPremium} onChange={(e) => set("isPremium", e.target.checked)} className="size-4 accent-[#2f7d5b]" />
@@ -148,9 +148,9 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
                 </label>
                 {fields.isPremium && (
                   <div className="mt-3">
-                    <span className={label}>India base price (₹)</span>
-                    <input className={input} type="number" min={0.01} step={0.01} value={fields.basePrice} onChange={(e) => set("basePrice", e.target.value)} placeholder={durationHint(item?.durationSecs)} />
-                    <p className="mt-1 text-[12px] text-white/40">Leave blank to use the existing duration rule. US and UAE prices convert automatically unless overridden.</p>
+                    <span className={label}>Episode price (credits)</span>
+                    <input className={input} type="number" min={1} step={1} value={fields.basePrice} onChange={(e) => set("basePrice", e.target.value)} placeholder={durationHint(item?.durationSecs)} />
+                    <p className="mt-1 text-[12px] text-white/40">Leave blank to use the duration rule. Each country uses its credit rate or automatic conversion. These country amounts override only this episode.</p>
                     {isEpisode && <div className="mt-3 grid grid-cols-2 gap-3"><label><span className={label}>US override ($)</span><input className={input} type="number" min={0.01} step={0.01} value={fields.usdPrice} onChange={(e) => set("usdPrice", e.target.value)} placeholder="Automatic" /></label><label><span className={label}>UAE override (AED)</span><input className={input} type="number" min={0.01} step={0.01} value={fields.aedPrice} onChange={(e) => set("aedPrice", e.target.value)} placeholder="Automatic" /></label></div>}
                   </div>
                 )}

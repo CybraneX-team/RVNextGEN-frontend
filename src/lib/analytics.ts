@@ -21,6 +21,22 @@ export function trackEvent(type: AnalyticsType, opts: { contentId?: string; prop
   void apiFetch("analytics/events", { method: "POST", token, body: { type, contentId: opts.contentId, sessionId: sessionId(), referrer, properties: opts.properties } }).catch(() => {});
 }
 
+const visitsInFlight = new Set<string>();
+/** One browse event per signed-in user and tab per day, so visits count toward active users. */
+export function trackVisit(token: string | null, userId: string | undefined): void {
+  if (!token) return;
+  const key = `rv_visit_${userId ?? 'account'}_${new Date().toISOString().slice(0, 10)}`;
+  try {
+    if (sessionStorage.getItem(key)) return;
+  } catch { /* Storage may be disabled; still record the visit. */ }
+  if (visitsInFlight.has(key)) return;
+  visitsInFlight.add(key);
+  void apiFetch('analytics/events', { method: 'POST', token, body: { type: 'VIEW', sessionId: sessionId(), referrer: document.referrer || undefined, properties: { surface: 'browse' } } })
+    .then(() => { try { sessionStorage.setItem(key, '1'); } catch { /* Storage may be disabled. */ } })
+    .catch(() => {})
+    .finally(() => visitsInFlight.delete(key));
+}
+
 /** Fire-and-forget watch heartbeat (START / PROGRESS / COMPLETE) with playback position + duration. */
 export function watchBeacon(contentId: string, eventType: "START" | "PROGRESS" | "COMPLETE", token: string | null, opts: { progressSec?: number; durationSec?: number } = {}): void {
   if (!token) return;
@@ -51,7 +67,7 @@ export function attachStreamTelemetry(iframe: HTMLIFrameElement, contentId: stri
     if (cancelled || !window.Stream) return;
     const player = window.Stream(iframe);
     const snapshot = () => ({ progressSec: Math.round(player.currentTime) || 0, durationSec: Math.round(player.duration) || undefined });
-    player.addEventListener("play", () => { if (!started) { started = true; watchBeacon(contentId, "START", token, snapshot()); } });
+    player.addEventListener("play", () => { if (!started) { started = true; trackEvent('PLAY', { contentId }, token); watchBeacon(contentId, "START", token, snapshot()); } });
     player.addEventListener("ended", () => watchBeacon(contentId, "COMPLETE", token, snapshot()));
     timer = window.setInterval(() => { if (started) watchBeacon(contentId, "PROGRESS", token, snapshot()); }, 15000);
   }).catch(() => {});

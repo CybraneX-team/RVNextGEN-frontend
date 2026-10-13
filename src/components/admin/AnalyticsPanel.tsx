@@ -107,7 +107,7 @@ function RevenueView({ token, range, deps }: { token: string; range: AnalyticsRa
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card label="INR revenue" value={rupees(data.totalRevenuePaise)} />
         <Card label="Paying users" value={data.payingUsers} />
-        <Card label="Reg → payment" value={pct(data.registrationToPayment)} />
+        <Card label="Paying / all users" value={pct(data.registrationToPayment)} />
         <Card label="Successful payments" value={data.successfulPayments} /><Card label="Failed payments" value={data.failedPayments} />
         <Card label="Episode unlocks" value={data.episodeUnlocks} />
         {data.foreignWalletRevenue.map((r) => <Card key={r.currency} label={`${r.currency} wallet revenue`} value={formatMoney(r.amountMinor, r.currency)} />)}

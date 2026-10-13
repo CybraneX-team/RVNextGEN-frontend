@@ -10,6 +10,7 @@ import { getDeviceId } from "@/lib/device";
 import { unlockPreview, unlockEpisode } from "@/lib/wallet";
 import { trackEvent, watchBeacon, attachStreamTelemetry } from "@/lib/analytics";
 import { formatMoney } from "@/lib/money";
+import { loadYouTubeApi, type YouTubePlayer } from "./EpisodeExpansion";
 import {
   addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
   getWatchlist, removeFromWatchlist, type ApiContent,
@@ -190,16 +191,42 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
   const resolvePlayback = useCallback(async () => {
     const pb = await createPlayback(id, token!, getDeviceId());
     const cloudflare = !("embedUrl" in pb);
-    setState({ status: "ready", url: "embedUrl" in pb ? pb.embedUrl : pb.playerUrl, cloudflare });
-    // Watch-start + PLAY analytics. Cloudflare gets per-second telemetry via the Stream SDK (effect below).
-    trackEvent("PLAY", { contentId: id }, token);
-    if (!cloudflare) watchBeacon(id, "START", token);
+    const url = "embedUrl" in pb ? new URL(pb.embedUrl) : null;
+    if (url) { url.searchParams.set('enablejsapi', '1'); url.searchParams.set('origin', window.location.origin); }
+    setState({ status: "ready", url: url?.toString() ?? pb.playerUrl, cloudflare });
   }, [id, token]);
 
   // Attach Cloudflare Stream telemetry (START/PROGRESS/COMPLETE with positions) once the iframe is mounted.
   useEffect(() => {
     if (state.status !== "ready" || !state.cloudflare || !playerFrame.current) return;
     return attachStreamTelemetry(playerFrame.current, id, token);
+  }, [state, id, token]);
+
+  useEffect(() => {
+    if (state.status !== "ready" || state.cloudflare || !playerFrame.current) return;
+    let live = true;
+    let started = false;
+    let playing = false;
+    let timer: number | undefined;
+    let player: YouTubePlayer | undefined;
+    void loadYouTubeApi().then(() => {
+      if (!live || !window.YT || !playerFrame.current) return;
+      player = new window.YT.Player(playerFrame.current, { events: {
+        onStateChange: (event: { data: number; target: YouTubePlayer }) => {
+          if (!live || !window.YT) return;
+          playing = event.data === window.YT.PlayerState.PLAYING;
+          const progressSec = Math.max(0, Math.round(event.target.getCurrentTime() || 0));
+          const durationSec = Math.max(0, Math.round(event.target.getDuration() || 0));
+          if (playing && !started) { started = true; trackEvent('PLAY', { contentId: id }, token); watchBeacon(id, 'START', token, { progressSec, durationSec }); }
+          if (event.data === window.YT.PlayerState.ENDED) watchBeacon(id, 'COMPLETE', token, { progressSec: durationSec, durationSec });
+        },
+      } });
+      timer = window.setInterval(() => {
+        if (!playing || !player) return;
+        watchBeacon(id, 'PROGRESS', token, { progressSec: Math.max(0, Math.round(player.getCurrentTime() || 0)), durationSec: Math.max(0, Math.round(player.getDuration() || 0)) });
+      }, 15000);
+    }).catch(() => {});
+    return () => { live = false; if (timer) window.clearInterval(timer); player?.destroy(); };
   }, [state, id, token]);
 
   useEffect(() => {

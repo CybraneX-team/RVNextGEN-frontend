@@ -5,7 +5,7 @@ import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 
 export type EpisodeSelection = { episode: number; origin: HTMLElement };
 
-type YouTubePlayer = {
+export type YouTubePlayer = {
   playVideo: () => void;
   pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
@@ -27,7 +27,7 @@ declare global {
 }
 
 let youtubeApi: Promise<void> | undefined;
-function loadYouTubeApi() {
+export function loadYouTubeApi() {
   if (window.YT?.Player) return Promise.resolve();
   youtubeApi ??= new Promise<void>((resolve, reject) => {
     const previousReady = window.onYouTubeIframeAPIReady;

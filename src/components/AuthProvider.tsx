@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { authApi, type AuthUser, type Session } from "@/lib/api";
+import { trackVisit } from "@/lib/analytics";
 
 type Status = "loading" | "authed" | "anon";
 type AuthContextValue = {
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({ status, user: session?.user ?? null, accessToken: session?.accessToken ?? null, signIn, signOut }),
     [status, session, signIn, signOut],
   );
+  useEffect(() => { trackVisit(session?.accessToken ?? null, session?.user.id); }, [session?.accessToken, session?.user.id]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

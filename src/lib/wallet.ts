@@ -7,6 +7,7 @@ export type WalletHistory = { currency: string; balanceMinor: number; items: Coi
 export type UnlockPreview = { episodeId: string; title: string; priceMinor: number; currency: string; alreadyUnlocked: boolean; balanceMinor: number; sufficient: boolean; expiresAt?: string | null; quoteId: string | null; quoteExpiresAt?: string };
 export type UnlockResult = { entitled: boolean; alreadyUnlocked: boolean; chargedMinor: number; currency: string; balanceMinor: number; expiresAt: string | null };
 export type Gateway = "razorpay" | "stripe";
+export type WalletRegion = { detectedCountryCode: string | null; countryCode: string; currency: string; source: "edge" | "ip" | "test" | "unknown" };
 
 type RazorpayCheckout = { providerOrderId: string; keyId: string; reused?: boolean };
 type StripeCheckout = { providerOrderId: string; clientSecret: string; publishableKey: string; reused?: boolean };
@@ -14,6 +15,7 @@ type CheckoutResponse = (RazorpayCheckout | StripeCheckout) & { walletPurchaseId
 
 // ---- API ----
 export const walletPacks = (token: string) => apiFetch<WalletPack[]>("wallet/packs", { token });
+export const walletRegion = (token: string) => apiFetch<WalletRegion>("wallet/region", { token });
 export const walletBalance = (token: string) => apiFetch<{ balanceMinor: number; currency: string }>("wallet/me", { token });
 export const walletHistory = (token: string, page = 1) => apiFetch<WalletHistory>(`wallet/transactions?page=${page}&limit=20`, { token });
 export const unlockPreview = (episodeId: string, token: string) => apiFetch<UnlockPreview>(`wallet/unlock-preview/${episodeId}`, { token });
