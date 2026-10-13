@@ -9,6 +9,7 @@ import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 import { getDeviceId } from "@/lib/device";
 import { unlockPreview, unlockEpisode } from "@/lib/wallet";
 import { trackEvent, watchBeacon, attachStreamTelemetry } from "@/lib/analytics";
+import { formatMoney } from "@/lib/money";
 import {
   addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
   getWatchlist, removeFromWatchlist, type ApiContent,
@@ -181,7 +182,7 @@ const seriesSeasons: Record<string, number[]> = {
 /** Plays a title: YouTube embed or Cloudflare iframe, resolved via the backend playback endpoint.
  * Premium episodes are gated by the Viewer Wallet: locked ones show an unlock prompt before playback. */
 function PlayerModal({ id, title, token, onClose }: { id: string; title: string; token: string | null; onClose: () => void }) {
-  type Gate = { priceCoins: number; balance: number; sufficient: boolean };
+  type Gate = { priceMinor: number; currency: string; balanceMinor: number; sufficient: boolean; quoteId: string };
   const [state, setState] = useState<{ status: "loading" } | { status: "ready"; url: string; cloudflare: boolean } | { status: "error"; message: string } | { status: "locked"; gate: Gate }>({ status: "loading" });
   const [unlocking, setUnlocking] = useState(false);
   const playerFrame = useRef<HTMLIFrameElement>(null);
@@ -209,7 +210,7 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
       try {
         const preview = await unlockPreview(id, token);
         if (!live) return;
-        if (!preview.alreadyUnlocked) { setState({ status: "locked", gate: { priceCoins: preview.priceCoins, balance: preview.balance, sufficient: preview.sufficient } }); return; }
+        if (!preview.alreadyUnlocked) { setState({ status: "locked", gate: { priceMinor: preview.priceMinor, currency: preview.currency, balanceMinor: preview.balanceMinor, sufficient: preview.sufficient, quoteId: preview.quoteId! } }); return; }
         await resolvePlayback();
       } catch (e) { if (live) setState({ status: "error", message: e instanceof Error ? e.message : "This title can’t be played right now." }); }
     })();
@@ -225,7 +226,7 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
   async function confirmUnlock() {
     if (!token) return;
     setUnlocking(true);
-    try { await unlockEpisode(id, token); setState({ status: "loading" }); await resolvePlayback(); }
+    try { if (state.status !== "locked") return; await unlockEpisode(id, state.gate.quoteId, token); setState({ status: "loading" }); await resolvePlayback(); }
     catch (e) { setState({ status: "error", message: e instanceof Error ? e.message : "Could not unlock this episode." }); }
     finally { setUnlocking(false); }
   }
@@ -241,11 +242,12 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
               <div className="max-w-sm">
                 <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">Premium episode</p>
                 <h3 className="mt-2 text-[20px] font-semibold text-white">Unlock “{title}”</h3>
-                <p className="mt-2 text-[14px] text-white/60">Costs <span className="font-semibold text-white">{state.gate.priceCoins} coins</span>. Your balance: {state.gate.balance} coins.</p>
+                <p className="mt-2 text-[14px] text-white/60">Costs <span className="font-semibold text-white">{formatMoney(state.gate.priceMinor, state.gate.currency)}</span>. Your balance: {formatMoney(state.gate.balanceMinor, state.gate.currency)}.</p>
+                <p className="mt-2 text-[12px] text-white/50">One purchase gives you access for one year.</p>
                 {state.gate.sufficient ? (
-                  <button onClick={() => void confirmUnlock()} disabled={unlocking} className="mt-5 h-11 rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{unlocking ? "Unlocking…" : `Unlock & play (${state.gate.priceCoins} coins)`}</button>
+                  <button onClick={() => void confirmUnlock()} disabled={unlocking} className="mt-5 h-11 rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{unlocking ? "Unlocking…" : `Unlock for one year (${formatMoney(state.gate.priceMinor, state.gate.currency)})`}</button>
                 ) : (
-                  <div className="mt-5"><p className="mb-3 text-[13px] text-[#ffb27f]">Not enough coins.</p><Link href="/wallet" className="inline-flex h-11 items-center rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f]">Add coins</Link></div>
+                  <div className="mt-5"><p className="mb-3 text-[13px] text-[#ffb27f]">Not enough wallet balance.</p><Link href="/wallet" className="inline-flex h-11 items-center rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f]">Add funds</Link></div>
                 )}
               </div>
             </div>

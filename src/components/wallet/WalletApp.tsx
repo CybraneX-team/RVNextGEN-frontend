@@ -7,13 +7,14 @@ import {
   confirmStripe, startTopUp, walletBalance, walletHistory, walletPacks,
   type CoinTxn, type Gateway, type WalletPack,
 } from "@/lib/wallet";
+import { formatMoney } from "@/lib/money";
 
-const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 const TXN_LABEL: Record<CoinTxn["type"], string> = { TOPUP: "Top-up", UNLOCK: "Episode unlock", REFUND: "Refund", ADJUSTMENT: "Adjustment" };
 
 export default function WalletApp() {
   const { accessToken, user } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
+  const [currency, setCurrency] = useState("INR");
   const [packs, setPacks] = useState<WalletPack[] | null>(null);
   const [history, setHistory] = useState<CoinTxn[]>([]);
   const [provider, setProvider] = useState<Gateway>("razorpay");
@@ -28,7 +29,7 @@ export default function WalletApp() {
     if (!accessToken) return;
     try {
       const [b, h] = await Promise.all([walletBalance(accessToken), walletHistory(accessToken)]);
-      setBalance(b.coinBalance); setHistory(h.items);
+      setBalance(b.balanceMinor); setCurrency(b.currency); if (b.currency !== 'INR') setProvider('stripe'); setHistory(h.items);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load your wallet"); }
   }, [accessToken]);
 
@@ -41,11 +42,11 @@ export default function WalletApp() {
     return () => { live = false; };
   }, [accessToken, reload]);
 
-  /** Poll the balance a few times so webhook-credited coins show up after payment. */
+  /** Poll until the payment webhook credits the local-currency balance. */
   const pollBalance = useCallback(async (before: number | null) => {
     for (let i = 0; i < 8; i++) {
       await new Promise((r) => setTimeout(r, 2000));
-      try { const b = await walletBalance(accessToken!); if (before == null || b.coinBalance > before) { setBalance(b.coinBalance); void reload(); return true; } } catch { /* retry */ }
+      try { const b = await walletBalance(accessToken!); if (before == null || b.balanceMinor > before) { setBalance(b.balanceMinor); void reload(); return true; } } catch { /* retry */ }
     }
     void reload();
     return false;
@@ -59,9 +60,9 @@ export default function WalletApp() {
     try {
       const before = balance;
       await startTopUp(pack, "razorpay", accessToken, { email: user.email });
-      setNotice("Payment received — crediting your coins…");
+      setNotice("Payment received — updating your wallet…");
       const ok = await pollBalance(before);
-      setNotice(ok ? "Coins added to your wallet." : "Payment is processing; your balance will update shortly.");
+      setNotice(ok ? "Funds added to your wallet." : "Payment is processing; your balance will update shortly.");
     } catch (e) { if ((e as Error).message !== "Payment cancelled") setError(e instanceof Error ? e.message : "Payment failed"); }
     finally { setBusyPack(null); }
   }
@@ -84,9 +85,9 @@ export default function WalletApp() {
       const before = balance;
       await confirmStripe();
       setStripePack(null);
-      setNotice("Payment received — crediting your coins…");
+      setNotice("Payment received — updating your wallet…");
       const ok = await pollBalance(before);
-      setNotice(ok ? "Coins added to your wallet." : "Payment is processing; your balance will update shortly.");
+      setNotice(ok ? "Funds added to your wallet." : "Payment is processing; your balance will update shortly.");
     } catch (e) { setError(e instanceof Error ? e.message : "Payment failed"); }
     finally { setStripePaying(false); }
   }
@@ -99,9 +100,9 @@ export default function WalletApp() {
       </header>
       <main className="mx-auto max-w-3xl px-4 pb-16 pt-6 sm:px-6">
         <section className="mb-7 rounded-2xl border border-[#2f7d5b]/25 bg-[radial-gradient(ellipse_at_top_right,rgba(47,125,91,.18),transparent_60%),#141615] p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">Coin balance</p>
-          <p className="mt-2 text-[40px] font-semibold tracking-[-1px]">{balance ?? "…"} <span className="text-[18px] font-normal text-white/50">coins</span></p>
-          <p className="mt-1 text-[12px] text-white/40">Use coins to unlock episodes.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">{currency} wallet balance</p>
+          <p className="mt-2 text-[40px] font-semibold tracking-[-1px]">{balance == null ? "…" : formatMoney(balance, currency)}</p>
+          <p className="mt-1 text-[12px] text-white/40">Use your wallet to unlock episodes for one year.</p>
         </section>
 
         {error && <p role="alert" className="mb-4 rounded-xl border border-red-300/15 bg-red-300/[.06] px-4 py-3 text-[13px] text-[#ff9b9b]">{error}</p>}
@@ -109,7 +110,7 @@ export default function WalletApp() {
 
         <section className="mb-9">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold">Add coins</h2>
+            <h2 className="text-[15px] font-semibold">Add funds</h2>
             <div className="flex gap-1 rounded-lg border border-white/12 p-0.5 text-[12px]">
               {(["razorpay", "stripe"] as Gateway[]).map((g) => (
                 <button key={g} onClick={() => setProvider(g)} className={`rounded-md px-3 py-1 capitalize ${provider === g ? "bg-white/10 text-white" : "text-white/55 hover:text-white/80"}`}>{g}</button>
@@ -121,9 +122,8 @@ export default function WalletApp() {
               {packs.map((p) => (
                 <div key={p.id} className="flex flex-col rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <span className="text-[13px] font-medium text-white/80">{p.name}</span>
-                  <span className="mt-1 text-[22px] font-semibold">{p.coinAmount + p.bonusCoins}<span className="text-[12px] font-normal text-white/45"> coins</span></span>
-                  {p.bonusCoins > 0 && <span className="text-[11px] text-[#9fe0bd]">includes {p.bonusCoins} bonus</span>}
-                  <span className="mt-1 text-[13px] text-white/55">{rupees(p.pricePaise)}</span>
+                  <span className="mt-1 text-[22px] font-semibold">{formatMoney(p.creditAmountMinor, p.currency)}</span>
+                  <span className="mt-1 text-[13px] text-white/55">Pay {formatMoney(p.pricePaise, p.currency)}</span>
                   <button onClick={() => void buy(p)} disabled={busyPack === p.id} className="mt-3 h-9 rounded-md bg-[#2f7d5b] text-[13px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busyPack === p.id ? "Opening…" : "Buy"}</button>
                 </div>
               ))}
@@ -137,8 +137,8 @@ export default function WalletApp() {
             <ul className="divide-y divide-white/5 rounded-xl border border-white/8">
               {history.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div><p className="text-[13px] text-white/80">{TXN_LABEL[t.type]}</p><p className="text-[11px] text-white/40">{new Date(t.createdAt).toLocaleString()}</p></div>
-                  <div className="text-right"><p className={`text-[14px] font-semibold ${t.delta < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{t.delta > 0 ? `+${t.delta}` : t.delta}</p><p className="text-[11px] text-white/40">bal {t.balanceAfter}</p></div>
+                  <div><p className="text-[13px] text-white/80">{TXN_LABEL[t.type]}</p><p className="text-[11px] text-white/40">{new Date(t.createdAt).toLocaleString()}</p>{t.accessExpiresAt && <p className="text-[11px] text-[#9fe0bd]">Access until {new Date(t.accessExpiresAt).toLocaleString()}</p>}</div>
+                  <div className="text-right"><p className={`text-[14px] font-semibold ${t.deltaMinor < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{t.deltaMinor > 0 ? "+" : ""}{formatMoney(t.deltaMinor, currency)}</p><p className="text-[11px] text-white/40">bal {formatMoney(t.balanceAfterMinor, currency)}</p></div>
                 </li>
               ))}
             </ul>
@@ -149,10 +149,10 @@ export default function WalletApp() {
       {stripePack && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !stripePaying && setStripePack(null)}>
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#121314] p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between"><h3 className="text-[15px] font-semibold">Pay {rupees(stripePack.pricePaise)}</h3><button onClick={() => !stripePaying && setStripePack(null)} className="text-white/60 hover:text-white">✕</button></div>
+            <div className="mb-3 flex items-center justify-between"><h3 className="text-[15px] font-semibold">Pay {formatMoney(stripePack.pricePaise, stripePack.currency)}</h3><button onClick={() => !stripePaying && setStripePack(null)} className="text-white/60 hover:text-white">✕</button></div>
             <div id="stripe-payment-element" className="min-h-[120px]" />
             {!stripeReady && <p className="text-[13px] text-white/40">Loading secure payment form…</p>}
-            <button onClick={() => void payStripe()} disabled={!stripeReady || stripePaying} className="mt-4 h-10 w-full rounded-md bg-[#2f7d5b] text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{stripePaying ? "Processing…" : `Pay ${rupees(stripePack.pricePaise)}`}</button>
+            <button onClick={() => void payStripe()} disabled={!stripeReady || stripePaying} className="mt-4 h-10 w-full rounded-md bg-[#2f7d5b] text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{stripePaying ? "Processing…" : `Pay ${formatMoney(stripePack.pricePaise, stripePack.currency)}`}</button>
           </div>
         </div>
       )}

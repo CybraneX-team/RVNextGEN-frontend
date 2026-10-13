@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import {
-  adminCreditRates, adminCreditTransactions, adminOverview, adminSettings, adminUploads, adminUsers, adminWalletPacks, adminWalletPurchases, createCreditRate, createWalletPack, updateCreditRate, updateSetting, updateWalletPack, userCreatorEconomics,
-  type AdminUpload, type AdminUser, type CreditRate, type CreditTransaction, type CreditTxnKind, type Overview, type UserEconomics, type WalletPack, type WalletPurchase,
+  adminCreditRates, adminCreditTransactions, adminSettings, adminUploads, adminUsers, adminWalletPacks, adminWalletPurchases, createCreditRate, createWalletPack, updateCreditRate, updateSetting, updateWalletPack, userCreatorEconomics,
+  type AdminUpload, type AdminUser, type CreditRate, type CreditTransaction, type CreditTxnKind, type UserEconomics, type WalletPack, type WalletPurchase,
 } from "@/lib/admin";
 import { deleteContent } from "@/lib/admin";
 import AddVideo from "./AddVideo";
@@ -14,8 +14,9 @@ import EditContentModal from "./EditContentModal";
 import GenresPanel from "./GenresPanel";
 import GrantCreditsDialog from "./GrantCreditsDialog";
 import AnalyticsPanel from "./AnalyticsPanel";
+import { formatMoney } from "@/lib/money";
 
-const TABS = ["Overview", "Analytics", "Users", "Content", "Genres", "Cost", "Transactions", "Wallet", "Settings", "Add YouTube", "Add Cloudflare"] as const;
+const TABS = ["Analytics", "Users", "Content", "Genres", "Cost", "Transactions", "Wallet", "Settings", "Add YouTube", "Add Cloudflare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads `fn` once per token/dependency change; returns {data, error, loading, reload}. */
@@ -38,28 +39,10 @@ function useAsync<T>(fn: (token: string) => Promise<T>, token: string | null, de
   return { data, error, loading, reload: () => setTick((t) => t + 1) };
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
-  return <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4"><div className="text-[12px] text-white/45">{label}</div><div className="mt-1 text-[24px] font-semibold text-white">{value}</div></div>;
-}
-
 const th = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-white/40";
 const td = "px-3 py-2 text-[13px] text-white/80";
 const Loading = () => <p className="text-[13px] text-white/40">Loading…</p>;
 const ErrorLine = ({ text }: { text: string }) => <p role="alert" className="text-[13px] text-[#ff8f8f]">{text}</p>;
-
-function OverviewPanel({ token }: { token: string }) {
-  const { data, error, loading } = useAsync<Overview>(adminOverview, token);
-  if (loading) return <Loading />;
-  if (error) return <ErrorLine text={error} />;
-  if (!data) return null;
-  const t = data.totals;
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      <Stat label="Users" value={t.users} /><Stat label="Paid" value={t.paidUsers} /><Stat label="Free" value={t.freeUsers} />
-      <Stat label="Content" value={t.content} /><Stat label="Views" value={t.views} /><Stat label="Generations" value={t.generations} />
-    </div>
-  );
-}
 
 function UsersPanel({ token }: { token: string }) {
   const [q, setQ] = useState("");
@@ -455,118 +438,110 @@ function SettingsPanel({ token }: { token: string }) {
       <section className="space-y-4 rounded-xl border border-white/8 p-5">
         <div>
           <h3 className="text-[15px] font-semibold text-white">Viewer Wallet — pricing rules</h3>
-          <p className="mt-1 text-[13px] text-white/45">How paid episodes are priced in coins (unless an episode has its own override). Default: 1 coin per minute.</p>
+          <p className="mt-1 text-[13px] text-white/45">Episodes have a credit price. The local value of one credit determines what viewers pay. An episode-specific country price takes priority.</p>
         </div>
         <SettingField settingKey="viewer.pricing.coinsPerMinute" label="Coins per minute" value={get("viewer.pricing.coinsPerMinute") ?? 1} token={token} kind="float" onSaved={reload} />
         <SettingField settingKey="viewer.pricing.rounding" label="Rounding" hint="fractional minutes" value={get("viewer.pricing.rounding") ?? "ceil"} token={token} kind="select" options={["ceil", "round", "floor"]} onSaved={reload} />
         <SettingField settingKey="viewer.pricing.minCoins" label="Minimum coins / paid episode" value={get("viewer.pricing.minCoins") ?? 1} token={token} kind="int" onSaved={reload} />
         <SettingField settingKey="viewer.pricing.maxCoins" label="Maximum coins / episode" hint="0 = no cap" value={get("viewer.pricing.maxCoins") ?? 0} token={token} kind="int" onSaved={reload} />
-        <SettingField settingKey="viewer.wallet.inrPerCoinPaise" label="₹ per coin (top-up value)" value={get("viewer.wallet.inrPerCoinPaise") ?? 100} token={token} kind="rupees" onSaved={reload} />
+        <SettingField settingKey="viewer.wallet.inrPerCoinPaise" label="India: ₹ per episode credit" value={get("viewer.wallet.inrPerCoinPaise") ?? 100} token={token} kind="rupees" onSaved={reload} />
+        <RegionalCreditRates token={token} rates={(get("viewer.credit.regionRates") ?? {}) as Record<string, { currency: string; amountMinor: number }>} onSaved={reload} />
       </section>
     </div>
   );
 }
 
-/** Viewer Wallet admin: coin pack CRUD + top-up purchase history. */
+function RegionalCreditRates({ token, rates, onSaved }: { token: string; rates: Record<string, { currency: string; amountMinor: number }>; onSaved: () => void }) {
+  const [us, setUs] = useState(rates.US ? (rates.US.amountMinor / 100).toFixed(2) : "");
+  const [ae, setAe] = useState(rates.AE ? (rates.AE.amountMinor / 100).toFixed(2) : "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    const next = { ...rates };
+    for (const [country, currency, raw] of [["US", "USD", us], ["AE", "AED", ae]]) {
+      if (!raw.trim()) { delete next[country]; continue; }
+      const amountMinor = Math.round(Number(raw) * 100);
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) { setError("Enter a positive amount, or leave a country blank for automatic conversion."); return; }
+      next[country] = { currency, amountMinor };
+    }
+    setSaving(true); setError(null);
+    try { await updateSetting("viewer.credit.regionRates", next, token); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save rates"); }
+    finally { setSaving(false); }
+  }
+  return <div className="space-y-3 border-t border-white/10 pt-4">
+    <p className="text-[12px] text-white/50">Set a price for one credit by country. Blank uses the current INR exchange rate automatically. A 5-credit episode at $0.06 per credit costs $0.30.</p>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label><span className="mb-1 block text-[11px] text-white/45">US: $ per credit</span><input className={smallInput} type="number" min="0.01" step="0.01" placeholder="Automatic conversion" value={us} onChange={(e) => setUs(e.target.value)} /></label>
+      <label><span className="mb-1 block text-[11px] text-white/45">UAE: AED per credit</span><input className={smallInput} type="number" min="0.01" step="0.01" placeholder="Automatic conversion" value={ae} onChange={(e) => setAe(e.target.value)} /></label>
+    </div>
+    <button onClick={() => void save()} disabled={saving} className="rounded-md border border-white/15 px-4 py-2 text-[13px] text-white/85 disabled:opacity-50">{saving ? "Saving…" : "Save country rates"}</button>
+    {error && <p role="alert" className="text-[12px] text-[#ff8f8f]">{error}</p>}
+  </div>;
+}
+
+/** Currency-specific Viewer Wallet packs and payment history. */
 function WalletPanel({ token }: { token: string }) {
   const packs = useAsync((tok) => adminWalletPacks(tok), token);
   const purchases = useAsync((tok) => adminWalletPurchases(tok), token);
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState(""); const [coins, setCoins] = useState(""); const [bonus, setBonus] = useState("0"); const [price, setPrice] = useState("");
-  const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState<"INR" | "USD" | "AED">("INR");
+  const [credit, setCredit] = useState("");
+  const [price, setPrice] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   async function create() {
-    setErr(null);
-    const coinAmount = Number(coins), pricePaise = Math.round(Number(price) * 100), bonusCoins = Number(bonus) || 0;
-    if (!name.trim()) { setErr("Name is required"); return; }
-    if (!Number.isInteger(coinAmount) || coinAmount <= 0) { setErr("Coins must be a whole number > 0"); return; }
-    if (!Number.isInteger(pricePaise) || pricePaise <= 0) { setErr("Price must be > 0"); return; }
-    setBusy(true);
-    try { await createWalletPack({ name: name.trim(), coinAmount, bonusCoins, pricePaise }, token); setName(""); setCoins(""); setBonus("0"); setPrice(""); setCreating(false); packs.reload(); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Could not create"); }
+    const creditAmountMinor = Math.round(Number(credit) * 100);
+    const pricePaise = Math.round(Number(price) * 100);
+    if (!name.trim() || !Number.isInteger(creditAmountMinor) || creditAmountMinor <= 0 || !Number.isInteger(pricePaise) || pricePaise <= 0) { setError("Enter a name and positive amounts."); return; }
+    setBusy(true); setError(null);
+    try { await createWalletPack({ name: name.trim(), currency, creditAmountMinor, pricePaise }, token); setName(""); setCredit(""); setPrice(""); packs.reload(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not create pack"); }
     finally { setBusy(false); }
   }
-  return (
-    <div className="space-y-6">
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-white">Wallet packs</h3>
-          <button onClick={() => setCreating((v) => !v)} className="rounded-md border border-white/15 px-3 py-1.5 text-[13px] text-white/80 hover:bg-white/10">{creating ? "Cancel" : "+ New pack"}</button>
-        </div>
-        {creating && (
-          <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border border-white/8 p-4 sm:grid-cols-5">
-            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Name</span><input className={smallInput} value={name} onChange={(e) => setName(e.target.value)} placeholder="Starter" /></label>
-            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Coins</span><input className={smallInput} type="number" min={1} value={coins} onChange={(e) => setCoins(e.target.value)} placeholder="50" /></label>
-            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Bonus coins</span><input className={smallInput} type="number" min={0} value={bonus} onChange={(e) => setBonus(e.target.value)} /></label>
-            <label className="block"><span className="mb-1 block text-[11px] text-white/45">Price (₹)</span><input className={smallInput} type="number" min={1} step={0.01} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="50" /></label>
-            <div className="flex items-end"><button onClick={() => void create()} disabled={busy} className="h-9 w-full rounded-md bg-[#2f7d5b] px-4 text-[13px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Create"}</button></div>
-            {err && <p className="col-span-full text-[12px] text-[#ff8f8f]">{err}</p>}
-          </div>
-        )}
-        {packs.loading ? <Loading /> : packs.error ? <ErrorLine text={packs.error} /> : (
-          <div className="overflow-x-auto rounded-xl border border-white/8">
-            <table className="w-full border-collapse">
-              <thead className="bg-white/[0.03]"><tr><th className={th}>Name</th><th className={th}>Coins</th><th className={th}>Bonus</th><th className={th}>Price</th><th className={th}>Active</th><th className={th}></th></tr></thead>
-              <tbody>{packs.data?.items.map((p: WalletPack) => <WalletPackRow key={p.id} pack={p} token={token} onChanged={packs.reload} />)}</tbody>
-            </table>
-            {packs.data && packs.data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No wallet packs yet.</p>}
-          </div>
-        )}
-      </section>
-      <section>
-        <h3 className="mb-3 text-[15px] font-semibold text-white">Recent top-ups</h3>
-        {purchases.loading ? <Loading /> : purchases.error ? <ErrorLine text={purchases.error} /> : (
-          <div className="overflow-x-auto rounded-xl border border-white/8">
-            <table className="w-full border-collapse">
-              <thead className="bg-white/[0.03]"><tr><th className={th}>When</th><th className={th}>User</th><th className={th}>Pack</th><th className={th}>Coins</th><th className={th}>Amount</th><th className={th}>Status</th></tr></thead>
-              <tbody>{purchases.data?.items.map((p: WalletPurchase) => (
-                <tr key={p.id} className="border-t border-white/5"><td className={td}>{new Date(p.createdAt).toLocaleString()}</td><td className={td}>{p.user?.email ?? "—"}</td><td className={td}>{p.pack?.name ?? "—"}</td><td className={td}>{p.coinsCredited}</td><td className={td}>{rupees(p.amountPaise)}</td><td className={`${td} ${p.status === "SUCCEEDED" ? "text-[#9fe0bd]" : p.status === "FAILED" ? "text-[#ff8f8f]" : "text-white/60"}`}>{p.status}</td></tr>
-              ))}</tbody>
-            </table>
-            {purchases.data && purchases.data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No top-ups yet.</p>}
-          </div>
-        )}
-      </section>
-    </div>
-  );
+  return <div className="space-y-7">
+    <section>
+      <h3 className="mb-3 text-[15px] font-semibold">Wallet top-up packs</h3>
+      <div className="grid grid-cols-2 gap-3 rounded-xl border border-white/8 p-4 sm:grid-cols-5">
+        <label><span className="text-[11px] text-white/45">Name</span><input className={smallInput} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label><span className="text-[11px] text-white/45">Currency</span><select className={smallInput} value={currency} onChange={(e) => setCurrency(e.target.value as "INR" | "USD" | "AED")}><option value="INR">INR</option><option value="USD">USD</option><option value="AED">AED</option></select></label>
+        <label><span className="text-[11px] text-white/45">Wallet credit</span><input className={smallInput} type="number" min="0.01" step="0.01" value={credit} onChange={(e) => setCredit(e.target.value)} /></label>
+        <label><span className="text-[11px] text-white/45">Charge</span><input className={smallInput} type="number" min="0.01" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
+        <button onClick={() => void create()} disabled={busy} className="self-end rounded-md bg-[#2f7d5b] px-3 py-2 text-[13px] disabled:opacity-50">Create pack</button>
+        {error && <p className="col-span-full text-[12px] text-[#ff8f8f]">{error}</p>}
+      </div>
+      {packs.loading ? <Loading /> : packs.error ? <ErrorLine text={packs.error} /> : <div className="mt-3 overflow-x-auto rounded-xl border border-white/8"><table className="w-full"><thead><tr><th className={th}>Name</th><th className={th}>Currency</th><th className={th}>Wallet credit</th><th className={th}>Charge</th><th className={th}>Active</th><th className={th}></th></tr></thead><tbody>{packs.data?.items.map((p: WalletPack) => <WalletPackRow key={p.id} pack={p} token={token} onChanged={packs.reload} />)}</tbody></table></div>}
+    </section>
+    <section>
+      <h3 className="mb-3 text-[15px] font-semibold">Recent top-ups</h3>
+      {purchases.loading ? <Loading /> : purchases.error ? <ErrorLine text={purchases.error} /> : <div className="overflow-x-auto rounded-xl border border-white/8"><table className="w-full"><thead><tr><th className={th}>When</th><th className={th}>User</th><th className={th}>Pack</th><th className={th}>Credited</th><th className={th}>Charged</th><th className={th}>Status</th></tr></thead><tbody>{purchases.data?.items.map((p: WalletPurchase) => <tr key={p.id}><td className={td}>{new Date(p.createdAt).toLocaleString()}</td><td className={td}>{p.user?.email ?? "—"}</td><td className={td}>{p.pack?.name ?? "—"}</td><td className={td}>{formatMoney(p.amountCreditedMinor ?? 0, p.currency)}</td><td className={td}>{formatMoney(p.amountPaise, p.currency)}</td><td className={td}>{p.status}</td></tr>)}</tbody></table></div>}
+    </section>
+  </div>;
 }
 
 function WalletPackRow({ pack, token, onChanged }: { pack: WalletPack; token: string; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [coins, setCoins] = useState(String(pack.coinAmount));
-  const [bonus, setBonus] = useState(String(pack.bonusCoins));
+  const [credit, setCredit] = useState((pack.creditAmountMinor / 100).toFixed(2));
   const [price, setPrice] = useState((pack.pricePaise / 100).toFixed(2));
   const [active, setActive] = useState(pack.isActive);
-  const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   async function save() {
-    setErr(null);
-    const coinAmount = Number(coins), pricePaise = Math.round(Number(price) * 100), bonusCoins = Number(bonus) || 0;
-    if (!Number.isInteger(coinAmount) || coinAmount <= 0 || !Number.isInteger(pricePaise) || pricePaise <= 0) { setErr("Invalid values"); return; }
-    setBusy(true);
-    try { await updateWalletPack(pack.id, { coinAmount, bonusCoins, pricePaise, isActive: active }, token); setEditing(false); onChanged(); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Could not save"); }
-    finally { setBusy(false); }
+    const creditAmountMinor = Math.round(Number(credit) * 100), pricePaise = Math.round(Number(price) * 100);
+    if (creditAmountMinor <= 0 || pricePaise <= 0) { setError("Amounts must be positive"); return; }
+    try { await updateWalletPack(pack.id, { creditAmountMinor, pricePaise, isActive: active }, token); setEditing(false); onChanged(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save"); }
   }
-  if (!editing) return (
-    <tr className="border-t border-white/5">
-      <td className={td}>{pack.name}</td><td className={td}>{pack.coinAmount}</td><td className={td}>{pack.bonusCoins}</td><td className={td}>{rupees(pack.pricePaise)}</td><td className={td}>{pack.isActive ? "Yes" : "No"}</td>
-      <td className={td}><button onClick={() => setEditing(true)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
-    </tr>
-  );
-  return (
-    <tr className="border-t border-white/5">
-      <td className={td}>{pack.name}</td>
-      <td className={td}><input className={smallInput} type="number" min={1} value={coins} onChange={(e) => setCoins(e.target.value)} /></td>
-      <td className={td}><input className={smallInput} type="number" min={0} value={bonus} onChange={(e) => setBonus(e.target.value)} /></td>
-      <td className={td}><input className={smallInput} type="number" min={0} step={0.01} value={price} onChange={(e) => setPrice(e.target.value)} /></td>
-      <td className={td}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-[#2f7d5b]" /></td>
-      <td className={td}><div className="flex gap-1.5"><button onClick={() => void save()} disabled={busy} className="rounded-md bg-[#2f7d5b] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Save"}</button><button onClick={() => setEditing(false)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button></div>{err && <p className="mt-1 text-[11px] text-[#ff8f8f]">{err}</p>}</td>
-    </tr>
-  );
+  return <tr><td className={td}>{pack.name}</td><td className={td}>{pack.currency}</td>
+    <td className={td}>{editing ? <input className={smallInput} type="number" step="0.01" value={credit} onChange={(e) => setCredit(e.target.value)} /> : formatMoney(pack.creditAmountMinor, pack.currency)}</td>
+    <td className={td}>{editing ? <input className={smallInput} type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /> : formatMoney(pack.pricePaise, pack.currency)}</td>
+    <td className={td}>{editing ? <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> : pack.isActive ? "Yes" : "No"}</td>
+    <td className={td}>{editing ? <button onClick={() => void save()}>Save</button> : <button onClick={() => setEditing(true)}>Edit</button>}{error && <p className="text-[#ff8f8f]">{error}</p>}</td>
+  </tr>;
 }
 
 export default function AdminDashboard() {
   const { user, accessToken, signOut } = useAuth();
-  const [tab, setTab] = useState<Tab>("Overview");
+  const [tab, setTab] = useState<Tab>("Analytics");
   return (
     <div className="min-h-screen bg-[#0b0c0d] text-white">
       <header className="flex flex-wrap items-center gap-4 border-b border-white/8 px-6 py-4">
@@ -583,8 +558,7 @@ export default function AdminDashboard() {
         ))}
       </nav>
       <main className="p-6">
-        {!accessToken ? <Loading /> : tab === "Overview" ? <OverviewPanel token={accessToken} />
-          : tab === "Analytics" ? <AnalyticsPanel token={accessToken} />
+        {!accessToken ? <Loading /> : tab === "Analytics" ? <AnalyticsPanel token={accessToken} />
           : tab === "Users" ? <UsersPanel token={accessToken} />
           : tab === "Content" ? <ContentPanel token={accessToken} />
           : tab === "Genres" ? <GenresPanel token={accessToken} />

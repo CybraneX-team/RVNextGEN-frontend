@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import {
-  analyticsContent, analyticsCreator, analyticsFunnel, analyticsRevenue, analyticsUsers,
-  type AnalyticsRange, type ContentAnalytics, type CreatorAnalytics, type FunnelAnalytics, type RevenueAnalytics, type UsersAnalytics,
+  adminOverview, analyticsContent, analyticsCreator, analyticsFunnel, analyticsRevenue, analyticsUsers,
+  type AnalyticsRange, type Overview,
 } from "@/lib/admin";
+import { formatMoney } from "@/lib/money";
 
 const SUBTABS = ["Users", "Content", "Revenue", "Funnel", "Creator Lab"] as const;
 type SubTab = (typeof SUBTABS)[number];
@@ -104,15 +105,16 @@ function RevenueView({ token, range, deps }: { token: string; range: AnalyticsRa
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="Total revenue" value={rupees(data.totalRevenuePaise)} />
-        <Card label="Paying users" value={data.payingUsers} /><Card label="ARPPU" value={rupees(data.arppuPaise)} />
+        <Card label="INR revenue" value={rupees(data.totalRevenuePaise)} />
+        <Card label="Paying users" value={data.payingUsers} />
         <Card label="Reg → payment" value={pct(data.registrationToPayment)} />
         <Card label="Successful payments" value={data.successfulPayments} /><Card label="Failed payments" value={data.failedPayments} />
-        <Card label="Episode unlocks" value={data.episodeUnlocks} /><Card label="Coins spent" value={data.coinsSpentOnUnlocks} />
+        <Card label="Episode unlocks" value={data.episodeUnlocks} />
+        {data.foreignWalletRevenue.map((r) => <Card key={r.currency} label={`${r.currency} wallet revenue`} value={formatMoney(r.amountMinor, r.currency)} />)}
       </div>
       <Section title="Revenue by stream">
         <Bars rows={[{ label: "Viewer Wallet", value: Math.round(data.byStream.walletPaise / 100) }, { label: "Creator credits", value: Math.round(data.byStream.creditPaise / 100) }, { label: "Series packages", value: Math.round(data.byStream.packagePaise / 100) }]} />
-        <p className="mt-2 text-[11px] text-white/40">Bars in ₹.</p>
+        <p className="mt-2 text-[11px] text-white/40">INR amounts only. USD and AED are shown separately above.</p>
       </Section>
     </div>
   );
@@ -168,9 +170,23 @@ export default function AnalyticsPanel({ token }: { token: string }) {
   const [to, setTo] = useState(() => iso(new Date()));
   const range: AnalyticsRange = { from: from || undefined, to: to ? `${to}T23:59:59` : undefined };
   const deps = [token, from, to, sub];
+  const overview = useRangeData<Overview>(() => adminOverview(token), {}, [token]);
 
   return (
     <div className="space-y-4">
+      <section aria-labelledby="platform-overview-heading">
+        <h3 id="platform-overview-heading" className="mb-3 text-[15px] font-semibold text-white">Platform overview</h3>
+        {overview.loading ? <Loading /> : overview.error ? <ErrorLine text={overview.error} /> : overview.data ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <Card label="Users" value={overview.data.totals.users} />
+            <Card label="Paid users" value={overview.data.totals.paidUsers} />
+            <Card label="Free users" value={overview.data.totals.freeUsers} />
+            <Card label="Content" value={overview.data.totals.content} />
+            <Card label="Views" value={overview.data.totals.views} />
+            <Card label="Generations" value={overview.data.totals.generations} />
+          </div>
+        ) : null}
+      </section>
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex gap-1 overflow-x-auto">{SUBTABS.map((s) => (
           <button key={s} onClick={() => setSub(s)} className={`shrink-0 rounded-md border px-3 py-1.5 text-[12px] ${sub === s ? "border-[#c0d8cc] bg-white/10 text-white" : "border-white/12 text-white/60 hover:bg-white/5"}`}>{s}</button>

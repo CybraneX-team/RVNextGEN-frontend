@@ -219,17 +219,20 @@ export const adminCreditTransactions = (
 };
 
 // --- Viewer Wallet packs (admin CRUD) ---
-export type WalletPack = { id: string; name: string; coinAmount: number; bonusCoins: number; pricePaise: number; currency: string; isActive: boolean };
+export type WalletPack = { id: string; name: string; creditAmountMinor: number; pricePaise: number; currency: "INR" | "USD" | "AED"; isActive: boolean };
 export const adminWalletPacks = (token: string) => apiFetch<Paginated<WalletPack>>("admin/wallet-packs?limit=100", { token });
-export type CreateWalletPackBody = { name: string; coinAmount: number; bonusCoins?: number; pricePaise: number; currency?: string };
+export type CreateWalletPackBody = { name: string; creditAmountMinor: number; pricePaise: number; currency: "INR" | "USD" | "AED" };
 export const createWalletPack = (body: CreateWalletPackBody, token: string) => apiFetch<WalletPack>("admin/wallet-packs", { method: "POST", body, token });
-export type UpdateWalletPackBody = { name?: string; coinAmount?: number; bonusCoins?: number; pricePaise?: number; isActive?: boolean };
+export type UpdateWalletPackBody = { name?: string; creditAmountMinor?: number; pricePaise?: number; isActive?: boolean };
 export const updateWalletPack = (id: string, body: UpdateWalletPackBody, token: string) => apiFetch<WalletPack>(`admin/wallet-packs/${id}`, { method: "PATCH", body, token });
 
-export type WalletPurchase = { id: string; provider: string; amountPaise: number; currency: string; coinsCredited: number; status: string; createdAt: string; user: { id: string; email: string } | null; pack: { id: string; name: string } | null };
+export type WalletPurchase = { id: string; provider: string; amountPaise: number; currency: string; amountCreditedMinor: number | null; status: string; createdAt: string; user: { id: string; email: string } | null; pack: { id: string; name: string } | null };
 export const adminWalletPurchases = (token: string, status?: string) => apiFetch<Paginated<WalletPurchase>>(`admin/wallet-purchases${listQuery({ status })}`, { token });
-export const adjustWallet = (userId: string, amount: number, reason: string, token: string) =>
-  apiFetch<{ userId: string; coinBalance: number }>(`admin/users/${userId}/wallet/adjust`, { method: "POST", body: { amount, reason }, token });
+export const adjustWallet = (userId: string, amountMinor: number, currency: "INR" | "USD" | "AED", reason: string, token: string) =>
+  apiFetch<{ userId: string; balanceMinor: number }>(`admin/users/${userId}/wallet/adjust`, { method: "POST", body: { amountMinor, currency, reason }, token });
+export type RegionalPriceResponse = { id: string; type: string; basePricePaise: number | null; durationSecs: number | null; regionalPrices: { countryCode: string; currency: string; amountMinor: number }[] };
+export const adminRegionalPrices = (episodeId: string, token: string) => apiFetch<RegionalPriceResponse>(`admin/content/${episodeId}/regional-prices`, { token });
+export const setAdminRegionalPrice = (episodeId: string, country: "US" | "AE", amountMinor: number | null, token: string) => apiFetch(`admin/content/${episodeId}/regional-prices/${country}`, { method: "PUT", body: { amountMinor }, token });
 
 // --- Analytics dashboard (sections A–E) ---
 export type AnalyticsRange = { from?: string; to?: string; seriesId?: string };
@@ -255,7 +258,9 @@ export const analyticsDropoff = (token: string, episodeId: string, r: AnalyticsR
 export type RevenueAnalytics = {
   range: { start: string; end: string }; totalRevenuePaise: number;
   byStream: { walletPaise: number; creditPaise: number; packagePaise: number };
-  successfulPayments: number; failedPayments: number; coinsSpentOnUnlocks: number; episodeUnlocks: number;
+  successfulPayments: number; failedPayments: number; episodeUnlocks: number;
+  foreignWalletRevenue: { currency: string; amountMinor: number }[];
+  walletSpentByCurrency: { currency: string; amountMinor: number }[];
   payingUsers: number; arppuPaise: number; registrationToPayment: number;
 };
 export const analyticsRevenue = (token: string, r: AnalyticsRange = {}) => apiFetch<RevenueAnalytics>(`admin/analytics/revenue${rangeQuery(r)}`, { token });

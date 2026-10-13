@@ -1,23 +1,23 @@
 import { apiFetch } from "./client";
 
 // ---- Types ----
-export type WalletPack = { id: string; name: string; coinAmount: number; bonusCoins: number; pricePaise: number; currency: string };
-export type CoinTxn = { id: string; delta: number; type: "TOPUP" | "UNLOCK" | "REFUND" | "ADJUSTMENT"; balanceAfter: number; episodeId: string | null; createdAt: string };
-export type WalletHistory = { balance: number; items: CoinTxn[]; page: number; limit: number; total: number; totalPages: number };
-export type UnlockPreview = { episodeId: string; title: string; priceCoins: number; free: boolean; alreadyUnlocked: boolean; balance: number; sufficient: boolean };
-export type UnlockResult = { entitled: boolean; alreadyUnlocked: boolean; charged: number; priceCoins: number; balance: number };
+export type WalletPack = { id: string; name: string; creditAmountMinor: number; pricePaise: number; currency: string };
+export type CoinTxn = { id: string; deltaMinor: number; type: "TOPUP" | "UNLOCK" | "REFUND" | "ADJUSTMENT"; balanceAfterMinor: number; episodeId: string | null; accessExpiresAt: string | null; createdAt: string };
+export type WalletHistory = { currency: string; balanceMinor: number; items: CoinTxn[]; page: number; limit: number; totalPages: number };
+export type UnlockPreview = { episodeId: string; title: string; priceMinor: number; currency: string; alreadyUnlocked: boolean; balanceMinor: number; sufficient: boolean; expiresAt?: string | null; quoteId: string | null; quoteExpiresAt?: string };
+export type UnlockResult = { entitled: boolean; alreadyUnlocked: boolean; chargedMinor: number; currency: string; balanceMinor: number; expiresAt: string | null };
 export type Gateway = "razorpay" | "stripe";
 
 type RazorpayCheckout = { providerOrderId: string; keyId: string; reused?: boolean };
 type StripeCheckout = { providerOrderId: string; clientSecret: string; publishableKey: string; reused?: boolean };
-type CheckoutResponse = (RazorpayCheckout | StripeCheckout) & { walletPurchaseId: string; provider: Gateway; coinsCredited?: number };
+type CheckoutResponse = (RazorpayCheckout | StripeCheckout) & { walletPurchaseId: string; provider: Gateway; amountCreditedMinor?: number };
 
 // ---- API ----
 export const walletPacks = (token: string) => apiFetch<WalletPack[]>("wallet/packs", { token });
-export const walletBalance = (token: string) => apiFetch<{ coinBalance: number }>("wallet/me", { token });
+export const walletBalance = (token: string) => apiFetch<{ balanceMinor: number; currency: string }>("wallet/me", { token });
 export const walletHistory = (token: string, page = 1) => apiFetch<WalletHistory>(`wallet/transactions?page=${page}&limit=20`, { token });
 export const unlockPreview = (episodeId: string, token: string) => apiFetch<UnlockPreview>(`wallet/unlock-preview/${episodeId}`, { token });
-export const unlockEpisode = (episodeId: string, token: string) => apiFetch<UnlockResult>(`wallet/unlock/${episodeId}`, { method: "POST", token });
+export const unlockEpisode = (episodeId: string, quoteId: string, token: string) => apiFetch<UnlockResult>(`wallet/unlock/${episodeId}`, { method: "POST", body: { quoteId }, token });
 const walletCheckout = (walletPackId: string, provider: Gateway, idempotencyKey: string, token: string) =>
   apiFetch<CheckoutResponse>("wallet/checkout", { method: "POST", body: { walletPackId, provider }, token, headers: { "idempotency-key": idempotencyKey } });
 
@@ -32,7 +32,7 @@ function loadScript(src: string): Promise<void> {
 }
 
 /**
- * Start a top-up for a pack. Opens the chosen gateway's payment UI. Coins are credited
+ * Start a top-up for a pack. Opens the chosen gateway's payment UI. Funds are credited
  * server-side by the payment webhook, so the caller should poll the balance afterwards.
  * Resolves when the user completes/submits payment, rejects if they cancel or it errors.
  */
@@ -62,7 +62,7 @@ async function openRazorpay(res: RazorpayCheckout, pack: WalletPack, user: { ema
       amount: pack.pricePaise,
       currency: pack.currency,
       name: "Viewer Wallet",
-      description: `${pack.coinAmount + pack.bonusCoins} coins`,
+      description: `Viewer wallet ${pack.currency} top-up`,
       prefill: { email: user.email },
       theme: { color: "#2f7d5b" },
       handler: () => resolve(),

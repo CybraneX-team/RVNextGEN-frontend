@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getContent, type ApiContent, type ContentType } from "@/lib/content";
-import { updateContent, uploadPoster } from "@/lib/admin";
+import { adminRegionalPrices, setAdminRegionalPrice, updateContent, uploadPoster } from "@/lib/admin";
 import GenrePicker from "./GenrePicker";
 
 const input = "h-11 w-full rounded-lg border border-white/12 bg-white/[0.04] px-3 text-[14px] text-white outline-none placeholder:text-white/35 focus:border-white/30";
@@ -11,7 +11,7 @@ const TYPES: ContentType[] = ["MOVIE", "SERIES", "EPISODE", "SHORT"];
 const durationHint = (secs: number | null | undefined) => (secs ? String(Math.ceil(secs / 60)) : "e.g. 5");
 const VISIBILITIES = ["PUBLISHED", "DRAFT", "PRIVATE", "ARCHIVED"] as const;
 
-type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number]; episodeNumber: string; isPremium: boolean; priceCoins: string };
+type Fields = { title: string; tagline: string; description: string; posterUrl: string; youtubeUrl: string; rating: string; type: ContentType; visibility: (typeof VISIBILITIES)[number]; episodeNumber: string; isPremium: boolean; basePrice: string; usdPrice: string; aedPrice: string };
 
 /** Edit an existing title: loads it, lets the admin change fields/genre/visibility, saves via PATCH. */
 export default function EditContentModal({ id, token, onClose, onSaved }: { id: string; token: string | null; onClose: () => void; onSaved: () => void }) {
@@ -30,7 +30,8 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     getContent(id, token).then((c) => {
       if (!live) return;
       setItem(c);
-      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "", isPremium: c.isPremium, priceCoins: c.priceCoinsOverride != null ? String(c.priceCoinsOverride) : "" });
+      setFields({ title: c.title, tagline: c.tagline ?? "", description: c.description ?? "", posterUrl: c.posterUrl ?? "", youtubeUrl: c.youtubeId ? `https://youtu.be/${c.youtubeId}` : "", rating: c.rating != null ? String(c.rating) : "", type: c.type, visibility: (c.visibility as Fields["visibility"]), episodeNumber: c.episodeNumber != null ? String(c.episodeNumber) : "", isPremium: c.isPremium, basePrice: c.basePricePaise != null ? (c.basePricePaise / 100).toFixed(2) : "", usdPrice: "", aedPrice: "" });
+      if (c.type === "EPISODE") void adminRegionalPrices(id, token).then((r) => { if (live) setFields((f) => f ? { ...f, usdPrice: r.regionalPrices.find((p) => p.countryCode === "US") ? (r.regionalPrices.find((p) => p.countryCode === "US")!.amountMinor / 100).toFixed(2) : "", aedPrice: r.regionalPrices.find((p) => p.countryCode === "AE") ? (r.regionalPrices.find((p) => p.countryCode === "AE")!.amountMinor / 100).toFixed(2) : "" } : f); }).catch(() => {});
       setCategoryIds(c.categories.map((x) => x.id));
     }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Couldn’t load this title."); });
     return () => { live = false; };
@@ -48,7 +49,9 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
     if (!token || !fields || busy) return;
     setBusy(true); setError(null);
     try {
-      const monetization = { isPremium: fields.isPremium, priceCoinsOverride: fields.isPremium && fields.priceCoins.trim() ? Number(fields.priceCoins) : null };
+      const toMinor = (value: string) => value.trim() ? Math.round(Number(value) * 100) : null;
+      if (fields.isPremium && (fields.basePrice && (!Number.isFinite(Number(fields.basePrice)) || Number(fields.basePrice) <= 0))) throw new Error("INR price must be positive");
+      const monetization = { isPremium: fields.isPremium, basePricePaise: fields.isPremium ? toMinor(fields.basePrice) : null };
       await updateContent(id, isEpisode ? {
         // Episodes keep it minimal — the same fields used when adding one.
         title: fields.title.trim(),
@@ -68,6 +71,10 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
         categoryIds,
         ...monetization,
       }, token);
+      if (isEpisode) {
+        await setAdminRegionalPrice(id, "US", fields.isPremium ? toMinor(fields.usdPrice) : null, token);
+        await setAdminRegionalPrice(id, "AE", fields.isPremium ? toMinor(fields.aedPrice) : null, token);
+      }
       onSaved();
       onClose();
     } catch (e) {
@@ -133,17 +140,18 @@ export default function EditContentModal({ id, token, onClose, onSaved }: { id: 
                   </div>
                 </>
               )}
-              {/* Viewer Wallet monetization: free vs paid + optional coin price override. */}
+              {/* Viewer Wallet monetization: INR base with optional regional overrides. */}
               <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
                 <label className="flex items-center gap-2 text-[13px] text-white/80">
                   <input type="checkbox" checked={fields.isPremium} onChange={(e) => set("isPremium", e.target.checked)} className="size-4 accent-[#2f7d5b]" />
-                  Paid episode (requires wallet coins to unlock)
+                  Paid episode (one year of access per purchase)
                 </label>
                 {fields.isPremium && (
                   <div className="mt-3">
-                    <span className={label}>Price override (coins)</span>
-                    <input className={input} type="number" min={0} step={1} value={fields.priceCoins} onChange={(e) => set("priceCoins", e.target.value)} placeholder={durationHint(item?.durationSecs)} />
-                    <p className="mt-1 text-[12px] text-white/40">Leave blank to price by duration{item?.durationSecs ? ` (≈ ${Math.ceil(item.durationSecs / 60)} coins)` : ""}.</p>
+                    <span className={label}>India base price (₹)</span>
+                    <input className={input} type="number" min={0.01} step={0.01} value={fields.basePrice} onChange={(e) => set("basePrice", e.target.value)} placeholder={durationHint(item?.durationSecs)} />
+                    <p className="mt-1 text-[12px] text-white/40">Leave blank to use the existing duration rule. US and UAE prices convert automatically unless overridden.</p>
+                    {isEpisode && <div className="mt-3 grid grid-cols-2 gap-3"><label><span className={label}>US override ($)</span><input className={input} type="number" min={0.01} step={0.01} value={fields.usdPrice} onChange={(e) => set("usdPrice", e.target.value)} placeholder="Automatic" /></label><label><span className={label}>UAE override (AED)</span><input className={input} type="number" min={0.01} step={0.01} value={fields.aedPrice} onChange={(e) => set("aedPrice", e.target.value)} placeholder="Automatic" /></label></div>}
                   </div>
                 )}
               </div>
