@@ -63,6 +63,10 @@ function ProfileContent() {
         <span className="min-w-0 flex-1 text-left"><span className="block text-[14px] font-semibold text-white">Creator&apos;s Lab</span><span className="mt-1 block text-[11px] leading-4 text-white/55 sm:text-xs">Create stories and bring them to life</span></span>
         <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0 text-white/45 transition-transform group-hover:translate-x-1 group-hover:text-[#e5b27f]" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
       </Link>
+      {user?.role === "ADMIN" && <Link href="/admin" className="group mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-[#8fcab0]/25 bg-[#8fcab0]/[.07] text-[13px] font-semibold text-[#bce4cf] transition-colors hover:border-[#8fcab0]/45 hover:bg-[#8fcab0]/[.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8fcab0]">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 3 4.5 6v5.2c0 4.6 3.2 8.3 7.5 9.8 4.3-1.5 7.5-5.2 7.5-9.8V6L12 3Z" /><path d="m9.5 12 1.7 1.7 3.6-3.9" /></svg>
+        Admin panel
+      </Link>}
       <button type="button" onClick={() => void logout()} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-white/[.08] bg-white/[.025] text-[13px] font-medium text-white/60 transition-colors hover:border-white/[.15] hover:bg-white/[.05] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M10 17l5-5-5-5m5 5H3m9-9h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></svg>Log out</button>
       <p className="mt-6 text-center text-[10px] tracking-wide text-white/25">Your account, your stories, your next watch.</p>
     </div>
