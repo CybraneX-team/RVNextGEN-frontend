@@ -1,90 +1,148 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Film, FolderOpen, Home, LoaderCircle, Pencil, Plus, Save } from "lucide-react";
 import { useAuth } from "../AuthProvider";
-import { getCreditBalance, getProject, type CreatorStep, type ProjectDetail, type StageStatus, type StageView, type StepKind } from "@/lib/creator";
-import { STAGE_META } from "@/lib/creator-models";
-import CreatorHeader from "./CreatorHeader";
-import StageCard from "./StageCard";
+import { editStep, getCreditBalance, getProject, quoteStep, runStep, type CreatorStep, type ProjectDetail, type StageView, type StepKind } from "@/lib/creator";
+import { modelsForKind, STAGE_META } from "@/lib/creator-models";
 import PublishDialog from "./PublishDialog";
 
 const PREREQ: Record<StepKind, StepKind[]> = {
-  STORY: [],
-  SCREENPLAY: ["STORY"],
-  CHARACTER: ["SCREENPLAY"],
-  SCENE: ["SCREENPLAY"],
-  ANIMATION: ["CHARACTER", "SCENE"],
+  STORY: [], SCREENPLAY: ["STORY"], CHARACTER: ["SCREENPLAY"],
+  SCENE: ["SCREENPLAY"], ANIMATION: ["CHARACTER", "SCENE"],
 };
-const PIPELINE: StepKind[] = ["STORY", "SCREENPLAY", "CHARACTER", "SCENE", "ANIMATION"];
+const BOARD_STAGES: StepKind[] = ["SCREENPLAY", "CHARACTER", "SCENE", "STORY"];
 
-/** Latest step per kind (highest order wins — "regenerate" creates a newer step). */
 function latestByKind(steps: CreatorStep[]): Partial<Record<StepKind, CreatorStep>> {
-  const map: Partial<Record<StepKind, CreatorStep>> = {};
-  for (const step of steps) {
-    const current = map[step.kind];
-    if (!current || step.order > current.order) map[step.kind] = step;
-  }
-  return map;
+  const result: Partial<Record<StepKind, CreatorStep>> = {};
+  for (const step of steps) if (!result[step.kind] || step.order > result[step.kind]!.order) result[step.kind] = step;
+  return result;
 }
 
 function deriveStage(kind: StepKind, latest: Partial<Record<StepKind, CreatorStep>>): StageView {
   const step = latest[kind] ?? null;
-  if (step) {
-    const status: StageStatus = step.status === "READY" ? "READY" : step.status === "FAILED" ? "FAILED" : "GENERATING";
-    return { kind, status, step };
-  }
-  const missing = PREREQ[kind].filter((p) => latest[p]?.status !== "READY");
-  if (missing.length === 0) return { kind, status: "AVAILABLE", step: null };
-  return { kind, status: "LOCKED", step: null, lockedReason: `Finish ${missing.map((m) => STAGE_META[m].label).join(" & ")} first.` };
+  if (step) return { kind, step, status: step.status === "READY" ? "READY" : step.status === "FAILED" ? "FAILED" : "GENERATING" };
+  const missing = PREREQ[kind].filter((required) => latest[required]?.status !== "READY");
+  return missing.length ? { kind, step: null, status: "LOCKED", lockedReason: `Complete ${missing.map((item) => STAGE_META[item].label.toLowerCase()).join(" and ")} first.` } : { kind, step: null, status: "AVAILABLE" };
 }
 
-function ProductionCanvas({ project, steps }: { project: ProjectDetail; steps: Partial<Record<StepKind, CreatorStep>> }) {
-  const film = steps.ANIMATION?.generationJob?.outputUrl;
-  const assets = [
-    { label: "Character direction", url: steps.CHARACTER?.generationJob?.outputUrl },
-    { label: "Scene direction", url: steps.SCENE?.generationJob?.outputUrl },
-  ].filter((asset): asset is { label: string; url: string } => Boolean(asset.url));
-  const textAssets = [
-    { label: "Story", text: steps.STORY?.outputJson?.text },
-    { label: "Screenplay", text: steps.SCREENPLAY?.outputJson?.text },
-  ].filter((asset): asset is { label: string; text: string } => Boolean(asset.text));
-  const hasContent = Boolean(film || assets.length || textAssets.length);
+function StagePreview({ stage, projectTitle, projectId, token, onChanged, onPublish }: {
+  stage: StageView; projectTitle: string; projectId: string; token: string; onChanged: () => void; onPublish: (jobId: string) => void;
+}) {
+  const { kind, step, status } = stage;
+  const label = kind === "ANIMATION" ? "Film" : kind === "CHARACTER" ? "Character" : kind === "SCENE" ? "Scene" : STAGE_META[kind].label;
+  const outputUrl = step?.generationJob?.outputUrl;
+  const text = step?.outputJson?.text;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
-  return <section className="overflow-hidden rounded-[22px] border border-white/[.08] bg-[#111011] shadow-[0_24px_80px_#0005]">
-    <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 py-3.5 sm:px-5">
-      <div className="min-w-0"><p className="text-[9px] font-semibold uppercase tracking-[.2em] text-white/35">Studio canvas</p><h2 className="mt-1 truncate text-[14px] font-semibold text-white/85">{project.title}</h2></div>
-      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/[.08] bg-white/[.025] px-2.5 py-1 text-[10px] text-white/45"><span className={`size-1.5 rounded-full ${film ? "bg-[#e5b27f]" : "bg-white/30"}`} />{film ? "Film ready" : "Live preview"}</span>
+  async function saveEdit() {
+    if (!step || saving) return;
+    const value = draft.trim();
+    if (!value) { setEditError("Text can’t be empty."); return; }
+    setSaving(true); setEditError(null);
+    try {
+      await editStep(projectId, step.id, value, token);
+      setEditing(false);
+      onChanged();
+    } catch (cause) { setEditError(cause instanceof Error ? cause.message : "Could not save this edit."); }
+    finally { setSaving(false); }
+  }
+
+  return <section aria-label={`${label} preview`} className="creator-preview mx-auto flex w-full max-w-[clamp(340px,48%,640px)] flex-col overflow-hidden rounded-[10px] bg-[#141414] text-left">
+    <div className="flex items-center justify-between gap-3 px-3.5 pt-3.5">
+      <p className="min-w-0 truncate text-md text-white/70">Preview - {label}</p>
+      {status !== "READY" && status !== "AVAILABLE" && <span className="rounded-full border border-white/[.08] px-2 py-0.5 text-[9px] text-white/40">{status === "GENERATING" ? "Creating" : status === "FAILED" ? "Needs retry" : "Locked"}</span>}
     </div>
-    <div className="relative min-h-[300px] overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,rgba(116,68,41,.2),transparent_55%),linear-gradient(135deg,#171517,#0d0c0d)] p-4 sm:min-h-[420px] sm:p-6">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[.12] [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:36px_36px]" />
-      {!hasContent ? <div className="relative flex min-h-[260px] flex-col items-center justify-center text-center sm:min-h-[370px]">
-        <span className="mb-4 grid size-14 place-items-center rounded-2xl border border-[#e5b27f]/20 bg-[#e5b27f]/[.06] text-[#e5b27f]"><svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M3 9h18M9 21V9m6 12V9" /></svg></span>
-        <h3 className="text-[15px] font-semibold text-white/85">Your canvas starts here</h3><p className="mt-2 max-w-[270px] text-[12px] leading-5 text-white/40">Generate a story, character, scene, or film to see it take shape here.</p>
-      </div> : <div className="relative mx-auto flex min-h-[260px] max-w-2xl flex-col justify-center sm:min-h-[370px]">
-        {film ? <div className="overflow-hidden rounded-[16px] border border-white/10 bg-black shadow-[0_16px_60px_#0008]">
-          <video src={film} controls playsInline className="aspect-video w-full bg-black object-contain" />
-          <div className="flex items-center justify-between gap-3 px-3.5 py-3"><div><p className="text-[12px] font-semibold text-white/85">Final animation</p><p className="mt-0.5 text-[10px] text-white/40">Generated for {project.title}</p></div><span className="rounded-full border border-[#e5b27f]/20 bg-[#e5b27f]/[.06] px-2.5 py-1 text-[10px] text-[#e7bd94]">Ready to review</span></div>
-        </div> : assets.length ? <div className={`grid gap-3 ${assets.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
-          {assets.map((asset) => <figure key={asset.label} className="overflow-hidden rounded-[16px] border border-white/10 bg-[#191718] shadow-[0_16px_50px_#0006]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={asset.url} alt={asset.label} className="aspect-[4/5] w-full object-cover sm:aspect-[3/2]" referrerPolicy="no-referrer" />
-            <figcaption className="px-3 py-2.5 text-[11px] font-medium text-white/70">{asset.label}</figcaption>
-          </figure>)}
-        </div> : <div className="grid gap-3 sm:grid-cols-2">
-          {textAssets.map((asset) => <article key={asset.label} className="max-h-72 overflow-y-auto rounded-[16px] border border-white/[.08] bg-[#191718]/90 p-4 shadow-[0_16px_50px_#0006] sm:p-5"><p className="mb-3 text-[9px] font-semibold uppercase tracking-[.18em] text-[#e5b27f]/70">{asset.label} draft</p><p className="whitespace-pre-wrap text-[12px] leading-6 text-white/70">{asset.text}</p></article>)}
-        </div>}
-      </div>}
+    <div className="creator-preview-body min-h-[150px] flex-1 px-3.5 pb-3.5 pt-2.5">
+      {kind === "ANIMATION" && outputUrl ? <video src={outputUrl} controls playsInline className="aspect-video w-full rounded-lg bg-black object-contain" />
+        : (kind === "CHARACTER" || kind === "SCENE") && outputUrl ? <div className="relative h-[min(46vh,440px)] w-full"><Image src={outputUrl} alt={`${label} visual for ${projectTitle}`} fill sizes="(max-width: 768px) 100vw, 690px" unoptimized referrerPolicy="no-referrer" className="rounded-lg object-contain" /></div>
+          : editing ? <textarea aria-label={`Edit ${label.toLowerCase()} text`} autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} disabled={saving} className="min-h-[465px] max-h-[46vh] w-full resize-y bg-transparent text-sm leading-[1.6] text-white/80 outline-none disabled:opacity-60" />
+            : text ? <p className="max-h-[46vh] overflow-y-auto whitespace-pre-wrap text-sm leading-[1.6] text-white/35">{text}</p>
+              : status === "GENERATING" ? <div className="flex h-full min-h-[150px] items-center justify-center gap-2 text-[11px] text-white/45"><LoaderCircle className="size-4 animate-spin" /> Creating your {label.toLowerCase()}…</div>
+                : <p className="text-sm leading-[1.6] text-white/30">{status === "LOCKED" ? stage.lockedReason : `Describe your ${label.toLowerCase()} below to see it here.`}</p>}
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[.06] px-4 py-3 text-[10px] text-white/35 sm:px-5"><span>{project.steps.length} generation {project.steps.length === 1 ? "step" : "steps"}</span><span>Changes save to this project</span></div>
+    {editError && <p role="alert" className="px-3.5 pb-2 text-[11px] text-red-300">{editError}</p>}
+    {status === "READY" && (text || (kind === "ANIMATION" && outputUrl)) && <div className="flex items-center justify-end gap-2 border-t border-white/[.05] px-3 py-2">
+      {text && (editing ? <>
+        <button type="button" onClick={() => { setEditing(false); setEditError(null); }} disabled={saving} className="rounded-lg px-3 py-1.5 text-[11px] text-white/55 transition-colors hover:bg-white/[.05] hover:text-white disabled:opacity-40">Cancel</button>
+        <button type="button" onClick={() => void saveEdit()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-[#101013] disabled:opacity-50">{saving ? <LoaderCircle className="size-3 animate-spin" /> : <Save className="size-3" />}{saving ? "Saving…" : "Save changes"}</button>
+      </> : <button type="button" onClick={() => { setDraft(text); setEditError(null); setEditing(true); }} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] text-white/55 transition-colors hover:bg-white/[.05] hover:text-white"><Pencil className="size-3" /> Edit text</button>)}
+      {kind === "ANIMATION" && outputUrl && step?.generationJob && <button type="button" onClick={() => onPublish(step.generationJob!.id)} className="rounded-lg bg-white px-3 py-1.5 text-[11px] font-semibold text-[#101013]">Publish film</button>}
+    </div>}
+  </section>;
+}
+
+function WorkspaceComposer({ stage, projectId, token, balance, onChanged }: {
+  stage: StageView; projectId: string; token: string; balance: number | null; onChanged: () => void;
+}) {
+  const { kind, status } = stage;
+  const models = modelsForKind(kind);
+  const [prompt, setPrompt] = useState("");
+  const [modelId, setModelId] = useState(models[0]?.model ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [estimatedCredits, setEstimatedCredits] = useState<number | null>(null);
+  const model = models.find((item) => item.model === modelId) ?? models[0];
+  const tooPoor = balance != null && balance <= 0;
+
+  useEffect(() => {
+    if (!token || !model) return;
+    let live = true;
+    const handle = window.setTimeout(() => {
+      quoteStep({ operation: STAGE_META[kind].operation, provider: model.provider, model: model.model, promptChars: prompt.trim().length }, token)
+        .then((quote) => { if (live) setEstimatedCredits(quote.estimatedCredits); })
+        .catch(() => { if (live) setEstimatedCredits(null); });
+    }, 400);
+    return () => { live = false; window.clearTimeout(handle); };
+  }, [kind, model, prompt, token]);
+
+  async function submit() {
+    if (busy || status === "LOCKED" || status === "GENERATING") return;
+    const value = prompt.trim();
+    if (value.length < 3) { setError("Describe what you want in a little more detail."); return; }
+    setBusy(true); setError(null);
+    try {
+      await runStep(projectId, kind, { prompt: value, provider: model?.provider, model: model?.model }, token);
+      setPrompt(""); onChanged();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not complete this step."); }
+    finally { setBusy(false); }
+  }
+
+  return <section aria-label={`${STAGE_META[kind].label} composer`} className="creator-composer mx-auto w-full max-w-[clamp(340px,48%,640px)] rounded-2xl border border-white/[.07] px-3.5 pb-2.5 pt-3">
+    <textarea
+      aria-label={`Describe ${STAGE_META[kind].label}`}
+      value={prompt}
+      onChange={(event) => setPrompt(event.target.value)}
+      placeholder={status === "LOCKED" ? stage.lockedReason : "Describe your scene...."}
+      disabled={status === "LOCKED" || status === "GENERATING" || busy}
+      maxLength={4000}
+      className="block min-h-20 w-full resize-none bg-transparent text-sm leading-[1.5] text-white/80 outline-none placeholder:text-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+    />
+    <div className="flex items-center gap-2 pt-2">
+      <span aria-hidden="true" className="grid size-6 place-items-center text-white/40"><Plus className="size-3.5" /></span>
+      <span className="text-sm text-white/25">{balance == null ? "" : `${(balance / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits`}</span>
+      <div className="ml-auto flex min-w-0 items-center gap-2.5">
+        <select aria-label="Generation model" value={model?.model ?? ""} onChange={(event) => setModelId(event.target.value)} className="max-w-[130px] min-w-0 bg-transparent text-sm text-white/45 outline-none sm:max-w-[190px]">{models.map((item) => <option key={item.model} value={item.model} className="bg-[#171719] text-white">{item.label} · {item.credits} cr</option>)}</select>
+        <button type="button" onClick={() => void submit()} disabled={busy || tooPoor || status === "LOCKED" || status === "GENERATING"} className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-sm font-medium text-[#111114] transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-35">{busy ? <LoaderCircle className="size-3 animate-spin" /> : null}{busy ? "Working…" : status === "READY" ? "Regenerate" : "Generate"}</button>
+      </div>
+    </div>
+    {estimatedCredits != null && <p className="mt-2 text-[10px] text-white/35">Estimated up to {estimatedCredits.toLocaleString(undefined, { maximumFractionDigits: 2 })} credits</p>}
+    {tooPoor && <p className="mt-2 text-[10px] text-amber-200/70">Not enough credits for this model.</p>}
+    {error && <p role="alert" className="mt-2 text-[10px] text-red-300">{error}</p>}
   </section>;
 }
 
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const { accessToken } = useAuth();
   const [project, setProject] = useState<ProjectDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedKind, setSelectedKind] = useState<StepKind>("STORY");
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
   const pollRef = useRef<number | undefined>(undefined);
 
@@ -92,107 +150,59 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (!accessToken) return;
     try {
       const [detail, credits] = await Promise.all([getProject(projectId, accessToken), getCreditBalance(accessToken)]);
-      setProject(detail);
-      setBalance(credits.balance);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load this project");
-    }
+      setProject(detail); setBalance(credits.balance); setError(null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not load this project."); }
   }, [accessToken, projectId]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch: state is set after the awaited load, not synchronously
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reload updates state only after awaited network requests.
   useEffect(() => { void reload(); }, [reload]);
-
-  // Single project-wide poller: runs only while a step is still generating.
-  const anyGenerating = useMemo(
-    () => (project?.steps ?? []).some((s) => s.status === "GENERATING" || s.status === "DRAFT"),
-    [project],
-  );
+  const generating = useMemo(() => project?.steps.some((step) => step.status === "GENERATING" || step.status === "DRAFT") ?? false, [project]);
   useEffect(() => {
     window.clearInterval(pollRef.current);
-    if (!anyGenerating) return;
-    pollRef.current = window.setInterval(() => { void reload(); }, 4000);
+    if (generating) pollRef.current = window.setInterval(() => { void reload(); }, 4000);
     return () => window.clearInterval(pollRef.current);
-  }, [anyGenerating, reload]);
+  }, [generating, reload]);
 
   const latest = useMemo(() => latestByKind(project?.steps ?? []), [project]);
-  const stageOf = (kind: StepKind) => deriveStage(kind, latest);
-  const stages = PIPELINE.map(stageOf);
-  const completedStages = stages.filter((stage) => stage.status === "READY").length;
-  const progress = Math.round((completedStages / stages.length) * 100);
-  const activeStage = stages.find((stage) => stage.status === "GENERATING" || stage.status === "AVAILABLE" || stage.status === "FAILED") ?? null;
+  const selectedStage = deriveStage(selectedKind, latest);
+  function selectStage(kind: StepKind) { setSelectedKind(kind); }
 
-  const stageProps = { projectId, token: accessToken ?? "", balance, onChanged: () => void reload() };
-  // Project spend so far (sum of the latest step per stage), in millicredits.
-  const spentCredits = Object.values(latest).reduce((sum, s) => sum + (s?.creditsUsed ?? 0), 0);
+  return <div className="creator-workspace min-h-dvh bg-[#0e0e10] text-white lg:h-dvh lg:overflow-hidden">
+    <nav aria-label="Creator Lab navigation" className="creator-rail fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-between border-t border-white/[.07] bg-[#101012] px-3 lg:inset-y-0 lg:right-auto lg:h-auto lg:w-18 lg:flex-col lg:justify-start lg:gap-4 lg:border-r lg:border-t-0 lg:px-0 lg:pt-3 pb-2">
+      <Link href="/creator" title="Your projects" aria-label="Your projects" className="grid size-12 place-items-center rounded-lg text-white/75 transition-colors hover:bg-white/[.06] hover:text-white"><FolderOpen className="size-5" /></Link>
+      <Link href="/" title="Back to app" aria-label="Back to app" className="grid size-12 place-items-center rounded-lg text-white/40 transition-colors hover:bg-white/[.06] hover:text-white"><Home className="size-5" /></Link>
+      <button type="button" title="Film stage" aria-label="Open film stage" onClick={() => selectStage("ANIMATION")} className={`grid size-12 place-items-center rounded-lg transition-colors hover:bg-white/[.06] ${selectedKind === "ANIMATION" ? "bg-white/[.07] text-white" : "text-white/40"}`}><Film className="size-5" /></button>
+      <div className="hidden flex-1 lg:block" />
+      <Link href="/creator" title="All projects" aria-label="All projects" className="hidden size-12 place-items-center rounded-lg text-white/35 transition-colors hover:bg-white/[.06] hover:text-white lg:grid"><ArrowLeft className="size-5" /></Link>
+  </nav>
 
-  return (
-    <div className="min-h-dvh bg-[#0e0d0f] text-white">
-      <CreatorHeader balance={balance} />
-      <main className="mx-auto max-w-[1440px] px-4 pb-14 pt-5 sm:px-6 sm:pt-8 xl:px-10">
-        <div className="mb-6 rounded-[22px] border border-[#d9a26d]/12 bg-[radial-gradient(ellipse_at_top_right,rgba(167,91,47,.14),transparent_60%),#171517] p-4 sm:mb-7 sm:p-6">
-          <Link href="/creator" className="inline-flex items-center gap-2 text-[12px] text-white/50 transition-colors hover:text-[#e5b27f]"><span aria-hidden="true">←</span> All projects</Link>
-          <p className="mt-5 text-[10px] font-semibold uppercase tracking-[.18em] text-[#d7a574]/70">Project workspace</p>
-          <h1 className="mt-1 break-words text-[24px] leading-tight font-semibold tracking-[-.7px] sm:text-[30px]">{project?.title ?? "Loading project…"}</h1>
+    <main className="creator-workspace-main mx-auto flex min-h-dvh w-full max-w-[90dvw] flex-col pb-[72px] lg:h-dvh lg:min-h-0 lg:pl-[42px] lg:pb-0">
+      <h1 className="sr-only">{project?.title ?? "Creator Lab"}</h1>
+
+      {error && <div role="alert" className="mx-4 mt-3 rounded-lg border border-red-300/20 bg-red-300/[.04] px-3 py-2 text-[12px] text-red-200 sm:mx-6">{error} <button type="button" onClick={() => void reload()} className="ml-2 underline">Retry</button></div>}
+      {!project ? <div className="grid flex-1 place-items-center text-[13px] text-white/40">Loading your workspace…</div> : <>
+        <section aria-label="Creative stages" className="creator-stage-strip grid shrink-0 grid-flow-col auto-cols-[minmax(190px,1fr)] gap-1.5 overflow-x-auto px-3.5 pb-3 pt-3.5 lg:grid-cols-4 lg:grid-flow-row lg:overflow-visible lg:pt-2.5">
+          {BOARD_STAGES.map((kind) => {
+            const stage = deriveStage(kind, latest);
+            const active = selectedKind === kind;
+            const summary = stage.step?.outputJson?.text ?? stage.step?.inputJson?.prompt ?? (stage.status === "LOCKED" ? stage.lockedReason : kind === "CHARACTER" ? "Create your first character…" : kind === "SCENE" ? "Design your first scene…" : kind === "STORY" ? "Start with the world and its central idea…" : "Turn your story into scenes and dialogue…");
+            return <button key={kind} type="button" onClick={() => selectStage(kind)} aria-pressed={active} className={`creator-stage-card flex h-40 min-w-0 flex-col overflow-hidden rounded-[9px] border px-3 pb-3 pt-3 text-left transition-[background-color,border-color] duration-200 ${active ? "border-white/[.18] bg-[#161617]" : "border-white/[.04] bg-[#141415] hover:border-white/[.1] hover:bg-[#1a1a1c]"}`}>
+              <span className="flex items-center justify-between gap-2 text-md text-white/75"><span>{kind === "CHARACTER" ? "Character" : kind === "SCENE" ? "Scene" : STAGE_META[kind].label}</span><span className={`size-1.5 rounded-full ${stage.status === "READY" ? "bg-[#d9b28c]" : stage.status === "GENERATING" ? "bg-white/55 animate-pulse" : "bg-white/15"}`} /></span>
+              <span className="mt-1.5 line-clamp-4 text-sm leading-[1.55] text-white/30">{summary}</span>
+            </button>;
+          })}
+        </section>
+
+        <div className="creator-stage-center flex min-h-[240px] flex-1 items-center justify-center px-3.5 pb-4 pt-8 lg:min-h-0 lg:overflow-y-auto ">
+          <StagePreview key={selectedKind} stage={selectedStage} projectTitle={project.title} projectId={projectId} token={accessToken ?? ""} onChanged={() => void reload()} onPublish={setPublishJobId} />
         </div>
 
-        {project && <section aria-label="Project progress" className="mb-6 rounded-[20px] border border-white/[.08] bg-[#171517] p-4 sm:mb-7 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div><p className="text-[10px] font-semibold uppercase tracking-[.17em] text-white/40">Production progress</p><p className="mt-1 text-[14px] font-medium text-white/85">{completedStages} of {stages.length} stages complete</p></div>
-            <span className="rounded-full border border-[#e5b27f]/15 bg-[#e5b27f]/[.06] px-2.5 py-1 text-[11px] font-semibold text-[#e7bd94]">{progress}%</span>
-          </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[.07]"><div className="h-full rounded-full bg-gradient-to-r from-[#a96a42] to-[#e5b27f] transition-[width] duration-500" style={{ width: `${progress}%` }} /></div>
-          <div className="mt-4 grid grid-cols-5 gap-1.5 sm:gap-2.5">
-            {stages.map((stage, index) => {
-              const complete = stage.status === "READY";
-              const current = activeStage?.kind === stage.kind;
-              return <div key={stage.kind} className="min-w-0 text-center">
-                <span className={`mx-auto grid size-7 place-items-center rounded-full border text-[11px] font-semibold sm:size-8 ${complete ? "border-[#e5b27f]/45 bg-[#e5b27f]/15 text-[#f0c493]" : current ? "border-[#e5b27f]/45 bg-[#e5b27f]/[.08] text-[#e5b27f]" : "border-white/10 bg-white/[.025] text-white/30"}`}>
-                  {complete ? <svg aria-hidden="true" viewBox="0 0 20 20" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 10 4 4 8-8" /></svg> : String(index + 1).padStart(2, "0")}
-                </span>
-                <span className={`mt-1.5 block truncate text-[9px] sm:text-[10px] ${complete || current ? "text-white/70" : "text-white/30"}`}>{stage.kind === "CHARACTER" ? "Characters" : stage.kind === "ANIMATION" ? "Film" : stage.kind === "SCREENPLAY" ? "Script" : stage.kind === "SCENE" ? "Scenes" : "Story"}</span>
-              </div>;
-            })}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[.06] pt-3 text-[11px] text-white/40">
-            <span>{activeStage ? activeStage.status === "GENERATING" ? `Currently creating: ${STAGE_META[activeStage.kind].label}` : activeStage.status === "FAILED" ? `${STAGE_META[activeStage.kind].label} needs another try` : `${STAGE_META[activeStage.kind].label} is ready when you are` : "Your production pipeline is complete."}</span>
-            {spentCredits > 0 && <span className="text-white/55">Spent so far: {(spentCredits / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits</span>}
-          </div>
-        </section>}
+        <div className="creator-composer-area shrink-0 px-3.5 pb-5 lg:pb-8">
+          <WorkspaceComposer key={selectedKind} stage={selectedStage} projectId={projectId} token={accessToken ?? ""} balance={balance} onChanged={() => void reload()} />
+        </div>
+      </>}
+    </main>
 
-        {error && <p role="alert" className="mb-4 rounded-xl border border-red-300/15 bg-red-300/[.05] px-4 py-3 text-[12px] text-[#ff9b9b]">{error}</p>}
-        {!project ? (
-          <div className="grid min-h-72 place-items-center rounded-[22px] border border-white/[.07] bg-white/[.02] text-[12px] text-white/40">Loading your studio…</div>
-        ) : (
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(290px,.82fr)_minmax(0,1.18fr)] lg:gap-5">
-            <aside className="order-2 flex min-w-0 flex-col gap-3 sm:gap-4 lg:order-1">
-              <div className="px-1"><p className="text-[9px] font-semibold uppercase tracking-[.18em] text-[#d7a574]/65">Creative process</p><p className="mt-1 text-[11px] text-white/40">Build your film one layer at a time.</p></div>
-              <StageCard stage={stageOf("STORY")} index={1} {...stageProps} />
-              <StageCard stage={stageOf("SCREENPLAY")} index={2} {...stageProps} />
-
-              <div className="rounded-[20px] border border-white/[.07] bg-white/[.015] p-3 sm:p-4">
-                <div className="mb-3 flex items-end justify-between px-1"><div><p className="text-[9px] font-semibold uppercase tracking-[.18em] text-[#d7a574]/65">Visual development</p><h2 className="mt-1 text-[15px] font-semibold text-white/85">Build the look</h2></div><span className="text-[10px] text-white/35">02 stages</span></div>
-                <div className="flex flex-col gap-3 sm:gap-4">
-                  <StageCard stage={stageOf("CHARACTER")} index={3} {...stageProps} />
-                  <StageCard stage={stageOf("SCENE")} index={4} {...stageProps} />
-                </div>
-              </div>
-
-              <StageCard stage={stageOf("ANIMATION")} index={5} {...stageProps} onPublish={(jobId) => setPublishJobId(jobId)} />
-            </aside>
-            <div className="order-1 min-w-0 lg:sticky lg:top-[90px] lg:order-2"><ProductionCanvas project={project} steps={latest} /></div>
-          </div>
-        )}
-      </main>
-
-      {publishJobId && project && (
-        <PublishDialog
-          jobId={publishJobId}
-          defaultTitle={project.title}
-          token={accessToken ?? ""}
-          onClose={() => setPublishJobId(null)}
-          onPublished={() => { setPublishJobId(null); void reload(); }}
-        />
-      )}
-    </div>
-  );
+    {publishJobId && project && <PublishDialog jobId={publishJobId} defaultTitle={project.title} token={accessToken ?? ""} onClose={() => setPublishJobId(null)} onPublished={() => { setPublishJobId(null); void reload(); }} />}
+  </div>;
 }

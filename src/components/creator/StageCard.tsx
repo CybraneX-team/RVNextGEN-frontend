@@ -59,7 +59,7 @@ export default function StageCard({
   // Pre-submit estimate (worst-case credit ceiling) for the selected model + current prompt size.
   const [estCredits, setEstCredits] = useState<number | null>(null);
   useEffect(() => {
-    if (!token || !model) { setEstCredits(null); return; }
+    if (!token || !model) return;
     let live = true;
     const handle = setTimeout(() => {
       quoteStep({ operation, provider: model.provider, model: model.model, promptChars: prompt.trim().length }, token)
