@@ -7,12 +7,10 @@ import type { StepKind } from "./creator";
  * (provider + operation + model) AND the provider's API key must be set, or the run
  * returns 400 "No active credit rate configured" / "<provider> is not configured".
  * The `credits` here is a display hint only — the backend charges the live CreditRate,
- * which admins change in the Cost tab. Keep this list aligned with backend seeds.
- *
- * Seeded today (backend/src/data/data.service.ts):
- *   TEXT   openai / gpt-4o-mini                              → 1 credit
- *   IMAGE  fal    / fal-ai/flux/dev                          → 5 credits
- *   VIDEO  higgsfield / bytedance/seedance-2.5-text-to-video → 50 credits
+ * which admins change in the Cost tab. Keep the numbers aligned with backend seeds
+ * (backend/src/data/data.service.ts CREDIT_RATES.creditCost). The backend meters its own
+ * API cost from real usage (tokens / megapixels / seconds); this flat credit charge is tuned
+ * to cover the worst-case cost of a long step.
  */
 export type ModelOption = {
   provider: string;
@@ -24,10 +22,10 @@ export type ModelOption = {
 
 const TEXT_MODELS: ModelOption[] = [
   { provider: "openai", model: "gpt-4o-mini", label: "OpenAI · GPT-4o mini", credits: 1 },
-  { provider: "openai", model: "gpt-4o", label: "OpenAI · GPT-4o", credits: 5 },
-  { provider: "anthropic", model: "claude-haiku-4-5", label: "Anthropic · Claude Haiku 4.5", credits: 2 },
-  { provider: "anthropic", model: "claude-sonnet-4-5", label: "Anthropic · Claude Sonnet 4.5", credits: 6 },
-  { provider: "xai", model: "grok-3", label: "xAI · Grok 3", credits: 3 },
+  { provider: "openai", model: "gpt-4o", label: "OpenAI · GPT-4o", credits: 7 },
+  { provider: "anthropic", model: "claude-haiku-4-5", label: "Anthropic · Claude Haiku 4.5", credits: 4 },
+  { provider: "anthropic", model: "claude-sonnet-4-5", label: "Anthropic · Claude Sonnet 4.5", credits: 9 },
+  { provider: "xai", model: "grok-3", label: "xAI · Grok 3", credits: 9 },
   { provider: "groq", model: "openai/gpt-oss-20b", label: "Groq · GPT-OSS 20B", credits: 1 },
   { provider: "openrouter", model: "openai/gpt-4o-mini", label: "OpenRouter · GPT-4o mini", credits: 1 },
 ];
@@ -39,7 +37,7 @@ const IMAGE_MODELS: ModelOption[] = [
 
 const VIDEO_MODELS: ModelOption[] = [
   // fal Seedance works today with the existing FAL_KEY. Listed first = default.
-  { provider: "fal", model: "fal-ai/bytedance/seedance/v1/pro/text-to-video", label: "fal · Seedance 1 Pro", credits: 40 },
+  { provider: "fal", model: "fal-ai/bytedance/seedance/v1/pro/text-to-video", label: "fal · Seedance 1 Pro", credits: 60 },
   // Higgsfield options require HIGGSFIELD_API_URL to be set on the backend.
   { provider: "higgsfield", model: "bytedance/seedance-2.5-text-to-video", label: "Higgsfield · Seedance 2.5", credits: 50 },
   { provider: "higgsfield", model: "default", label: "Higgsfield · Default", credits: 50 },

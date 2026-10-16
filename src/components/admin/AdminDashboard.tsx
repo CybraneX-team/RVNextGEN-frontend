@@ -57,7 +57,7 @@ function UsersPanel({ token }: { token: string }) {
           <table className="w-full border-collapse">
             <thead className="bg-white/[0.03]"><tr><th className={th}>Email</th><th className={th}>Name</th><th className={th}>Role</th><th className={th}>Credits</th><th className={th}>Verified</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((u: AdminUser) => (
-              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{u.creditsBalance}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td><td className={td}><div className="flex gap-1.5"><button onClick={() => setEconUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Economics</button><button onClick={() => setGrantUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">＋ Credits</button></div></td></tr>
+              <tr key={u.id} className="border-t border-white/5"><td className={td}>{u.email}</td><td className={td}>{u.profile?.displayName ?? "—"}</td><td className={td}>{u.role}</td><td className={td}>{credits(u.creditsBalance)}</td><td className={td}>{u.emailVerifiedAt ? "Yes" : "No"}</td><td className={td}><div className="flex gap-1.5"><button onClick={() => setEconUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Economics</button><button onClick={() => setGrantUser(u)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">＋ Credits</button></div></td></tr>
             ))}</tbody>
           </table>
           {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No users found.</p>}
@@ -70,6 +70,8 @@ function UsersPanel({ token }: { token: string }) {
 }
 
 const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+/** Credit amounts are stored in millicredits (1 credit = 1000 mc); show them as credits. */
+const credits = (mc: number) => (mc / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 /** Read-only per-user Creator Lab economics modal (credits, API cost, revenue, P/L + per-model breakdown). */
 function EconomicsDialog({ user, token, onClose }: { user: AdminUser; token: string; onClose: () => void }) {
@@ -91,11 +93,11 @@ function EconomicsDialog({ user, token, onClose }: { user: AdminUser; token: str
         {error ? <ErrorLine text={error} /> : !s ? <Loading /> : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <EconStat label="Credits balance" value={String(s.creditsBalance)} />
-              <EconStat label="Credits bought" value={String(s.creditsBought)} />
-              <EconStat label="Credits granted" value={String(s.creditsGranted)} />
-              <EconStat label="Credits consumed" value={String(s.creditsConsumed)} />
-              <EconStat label="Credits refunded" value={String(s.creditsRefunded)} />
+              <EconStat label="Credits balance" value={credits(s.creditsBalance)} />
+              <EconStat label="Credits bought" value={credits(s.creditsBought)} />
+              <EconStat label="Credits granted" value={credits(s.creditsGranted)} />
+              <EconStat label="Credits consumed" value={credits(s.creditsConsumed)} />
+              <EconStat label="Credits refunded" value={credits(s.creditsRefunded)} />
               <EconStat label="Revenue (paid)" value={rupees(s.revenuePaise)} />
               <EconStat label="API expenditure" value={rupees(s.apiExpenditurePaise)} />
               <EconStat label="Profit / loss" value={rupees(s.profitLossPaise)} tone={s.profitLossPaise < 0 ? "bad" : "good"} />
@@ -106,7 +108,7 @@ function EconomicsDialog({ user, token, onClose }: { user: AdminUser; token: str
               <table className="w-full border-collapse">
                 <thead className="bg-white/[0.03]"><tr><th className={th}>Model</th><th className={th}>Op</th><th className={th}>Gens</th><th className={th}>Credits</th><th className={th}>API cost</th><th className={th}>Margin</th></tr></thead>
                 <tbody>{data.byModel.map((m, i) => (
-                  <tr key={i} className="border-t border-white/5"><td className={td}>{m.provider}/{m.model}</td><td className={td}>{m.operation}</td><td className={td}>{m.generations}</td><td className={td}>{m.creditsConsumed}</td><td className={td}>{rupees(m.apiCostPaise)}</td><td className={`${td} ${m.marginPaise < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{rupees(m.marginPaise)}</td></tr>
+                  <tr key={i} className="border-t border-white/5"><td className={td}>{m.provider}/{m.model}</td><td className={td}>{m.operation}</td><td className={td}>{m.generations}</td><td className={td}>{credits(m.creditsConsumed)}</td><td className={td}>{rupees(m.apiCostPaise)}</td><td className={`${td} ${m.marginPaise < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{rupees(m.marginPaise)}</td></tr>
                 ))}</tbody>
               </table>
               {data.byModel.length === 0 && <p className="p-4 text-[13px] text-white/40">No generations yet.</p>}
@@ -186,23 +188,43 @@ function ContentPanel({ token }: { token: string }) {
 
 const smallInput = "h-9 w-full rounded-md border border-white/12 bg-white/[0.04] px-2 text-[13px] text-white outline-none focus:border-white/30";
 
-/** One editable credit-rate row: shows values, or credits/INR/active inputs while editing. */
-function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; onChanged: () => void }) {
+const paise = (p: number | null | undefined) => `₹${((p ?? 0) / 100).toFixed(2)}`;
+const creditsFromMc = (mc: number | null | undefined) => {
+  const c = (mc ?? 0) / 1000;
+  return c.toLocaleString(undefined, { maximumFractionDigits: 2 });
+};
+/** Short per-unit rate label for a credit rate, by metering unit. */
+function unitRateLabel(r: CreditRate): string {
+  switch (r.unit) {
+    case "PER_TOKEN": return `in ${paise(r.inputPaisePerMillion)} · out ${paise(r.outputPaisePerMillion)} / 1M tokens`;
+    case "PER_MEGAPIXEL": return `${paise(r.paisePerMegapixel)} / megapixel`;
+    case "PER_SECOND": return `${paise(r.paisePerSecond)} / second`;
+    default: return `${paise(r.inrCostPaise)} / call (flat)`;
+  }
+}
+
+/** One credit-rate row. Shows the metered rate + effective margin + an example charge; edit sets the per-model margin override & active flag. */
+function RateRow({ rate, token, defaultMarginBps, onChanged }: { rate: CreditRate; token: string; defaultMarginBps: number; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [creditCost, setCreditCost] = useState(String(rate.creditCost));
-  const [inr, setInr] = useState((rate.inrCostPaise / 100).toFixed(2));
+  const [marginPct, setMarginPct] = useState(rate.marginBps != null ? String(rate.marginBps / 100) : "");
   const [active, setActive] = useState(rate.isActive);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const effBps = rate.effectiveMarginBps ?? defaultMarginBps;
+  const inherits = rate.marginBps == null;
+
   async function save() {
-    const credits = Number(creditCost);
-    const inrPaise = Math.round(Number(inr) * 100);
-    if (!Number.isInteger(credits) || credits <= 0) { setError("Credits must be a whole number > 0"); return; }
-    if (!Number.isInteger(inrPaise) || inrPaise <= 0) { setError("INR cost must be greater than 0"); return; }
+    const trimmed = marginPct.trim();
+    let marginBps: number | null = null;
+    if (trimmed !== "") {
+      const pct = Number(trimmed);
+      if (!Number.isFinite(pct) || pct < 0) { setError("Margin must be a percentage ≥ 0, or blank to inherit"); return; }
+      marginBps = Math.round(pct * 100);
+    }
     setBusy(true); setError(null);
     try {
-      await updateCreditRate(rate.id, { creditCost: credits, inrCostPaise: inrPaise, isActive: active }, token);
+      await updateCreditRate(rate.id, { marginBps, isActive: active }, token);
       setEditing(false);
       onChanged();
     } catch (e) {
@@ -216,9 +238,9 @@ function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; 
     return (
       <tr className="border-t border-white/5">
         <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
-        <td className={td}>₹{(rate.inrCostPaise / 100).toFixed(2)}</td><td className={td}>{rate.creditCost}</td>
-        <td className={td}>{rate.revenuePaise !== undefined ? `₹${(rate.revenuePaise / 100).toFixed(2)}` : "—"}</td>
-        <td className={`${td} ${rate.marginPaise !== undefined && rate.marginPaise < 0 ? "text-[#ff8f8f]" : rate.marginPaise !== undefined ? "text-[#9fe0bd]" : ""}`}>{rate.marginPaise !== undefined ? `₹${(rate.marginPaise / 100).toFixed(2)}` : "—"}</td>
+        <td className={`${td} text-white/70`}>{unitRateLabel(rate)}</td>
+        <td className={td}>{(effBps / 100).toFixed(effBps % 100 === 0 ? 0 : 1)}%{inherits ? <span className="text-white/35"> (default)</span> : ""}</td>
+        <td className={td}><span className="text-white/55">{paise(rate.exampleCostPaise)}</span> → <span className="text-white">{creditsFromMc(rate.exampleMc)} cr</span> <span className="text-white/45">({paise(rate.exampleSellPaise)})</span></td>
         <td className={td}>{rate.isActive ? "Yes" : "No"}</td>
         <td className={td}><button onClick={() => setEditing(true)} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/10">Edit</button></td>
       </tr>
@@ -227,18 +249,59 @@ function RateRow({ rate, token, onChanged }: { rate: CreditRate; token: string; 
   return (
     <tr className="border-t border-white/5">
       <td className={td}>{rate.provider}</td><td className={td}>{rate.operation}</td><td className={td}>{rate.model}</td>
-      <td className={td}><input className={smallInput} type="number" min={0} step={0.01} value={inr} onChange={(e) => setInr(e.target.value)} /></td>
-      <td className={td}><input className={smallInput} type="number" min={1} step={1} value={creditCost} onChange={(e) => setCreditCost(e.target.value)} /></td>
-      <td className={td}>—</td><td className={td}>—</td>
+      <td className={`${td} text-white/50`}>{unitRateLabel(rate)}</td>
+      <td className={td}><input className={smallInput} type="number" min={0} step={0.5} value={marginPct} onChange={(e) => setMarginPct(e.target.value)} placeholder={`${defaultMarginBps / 100} (default)`} /></td>
+      <td className={td}>—</td>
       <td className={td}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-[#2f7d5b]" /></td>
       <td className={td}>
         <div className="flex gap-1.5">
           <button onClick={save} disabled={busy} className="rounded-md bg-[#2f7d5b] px-3 py-1 text-[12px] font-medium text-white hover:bg-[#2a704f] disabled:opacity-50">{busy ? "…" : "Save"}</button>
-          <button onClick={() => { setEditing(false); setError(null); }} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button>
+          <button onClick={() => { setEditing(false); setError(null); setMarginPct(rate.marginBps != null ? String(rate.marginBps / 100) : ""); }} className="rounded-md border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/10">Cancel</button>
         </div>
         {error && <p role="alert" className="mt-1 text-[11px] text-[#ff8f8f]">{error}</p>}
       </td>
     </tr>
+  );
+}
+
+/** Global profit margin control — applies to every model that has no per-model override ("all in one go"). */
+function GlobalMarginBar({ token, defaultMarginBps, inrPerCreditPaise, onSaved }: { token: string; defaultMarginBps: number; inrPerCreditPaise: number; onSaved: () => void }) {
+  const [pct, setPct] = useState(String(defaultMarginBps / 100));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const value = Number(pct);
+    if (!Number.isFinite(value) || value < 0) { setError("Enter a percentage ≥ 0"); return; }
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await updateSetting("creator.credit.marginBpsDefault", Math.round(value * 100), token);
+      setMsg("Saved — applies to all models without an override.");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <span className="mb-1 block text-[11px] text-white/45">Global profit margin (applies to all models)</span>
+          <div className="flex items-center gap-2">
+            <input className={`${smallInput} w-24`} type="number" min={0} step={0.5} value={pct} onChange={(e) => setPct(e.target.value)} />
+            <span className="text-[13px] text-white/60">%</span>
+            <button onClick={save} disabled={busy} className="rounded-md bg-[#e5b27f] px-4 py-1.5 text-[13px] font-semibold text-[#20140c] hover:bg-[#f0c493] disabled:opacity-50">{busy ? "Saving…" : "Apply to all"}</button>
+          </div>
+        </div>
+        <p className="text-[11px] leading-4 text-white/40">Charge = API&nbsp;cost&nbsp;×&nbsp;(1&nbsp;+&nbsp;margin), converted at {paise(inrPerCreditPaise)}/credit. Set a per-model override in a row’s Edit to differ from this.</p>
+      </div>
+      {msg && <p className="mt-2 text-[11px] text-[#9fe0bd]">{msg}</p>}
+      {error && <p role="alert" className="mt-2 text-[11px] text-[#ff8f8f]">{error}</p>}
+    </div>
   );
 }
 
@@ -296,16 +359,18 @@ function CostPanel({ token }: { token: string }) {
   const { data, error, loading, reload } = useAsync((tok) => adminCreditRates(tok), token);
   return (
     <div>
+      {data && <GlobalMarginBar token={token} defaultMarginBps={data.marginBpsDefault} inrPerCreditPaise={data.inrPerCreditPaise} onSaved={reload} />}
       <AddRateForm token={token} onAdded={reload} />
       {loading ? <Loading /> : error ? <ErrorLine text={error} /> : (
         <div className="overflow-x-auto rounded-xl border border-white/8">
           <table className="w-full border-collapse">
-            <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>API cost</th><th className={th}>Credits</th><th className={th}>Revenue/gen</th><th className={th}>Margin</th><th className={th}>Active</th><th className={th}></th></tr></thead>
+            <thead className="bg-white/[0.03]"><tr><th className={th}>Provider</th><th className={th}>Operation</th><th className={th}>Model</th><th className={th}>Rate</th><th className={th}>Margin</th><th className={th}>Example (cost → charge)</th><th className={th}>Active</th><th className={th}></th></tr></thead>
             <tbody>{data?.items.map((r: CreditRate) => (
-              <RateRow key={r.id} rate={r} token={token} onChanged={reload} />
+              <RateRow key={r.id} rate={r} token={token} defaultMarginBps={data.marginBpsDefault} onChanged={reload} />
             ))}</tbody>
           </table>
           {data && data.items.length === 0 && <p className="p-4 text-[13px] text-white/40">No credit rates configured yet.</p>}
+          <p className="border-t border-white/5 p-3 text-[11px] leading-4 text-white/40">Billing is usage-metered: the user is charged for the real tokens / megapixels / seconds used, not a flat rate. “Example” shows a representative generation (1k+1k tokens · 1 MP · 5 s).</p>
         </div>
       )}
     </div>
@@ -363,7 +428,7 @@ function TransactionsPanel({ token }: { token: string }) {
                 <td className={`${td} font-medium ${kindColor[r.kind]}`}>{KIND_LABEL[r.kind]}</td>
                 <td className={td}>{r.user?.email ?? "—"}</td>
                 <td className={td}>{r.model ? `${r.provider}/${r.model}` : "—"}</td>
-                <td className={`${td} ${r.credits < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{r.credits > 0 ? `+${r.credits}` : r.credits}</td>
+                <td className={`${td} ${r.credits < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{r.credits > 0 ? `+${credits(r.credits)}` : credits(r.credits)}</td>
                 <td className={td}>{r.cashPaise !== null ? rupees(r.cashPaise) : "—"}</td>
                 <td className={td}>{r.costPaise !== null ? rupees(r.costPaise) : "—"}</td>
               </tr>

@@ -178,15 +178,24 @@ export type UserEconomics = {
 export const userCreatorEconomics = (userId: string, token: string) =>
   apiFetch<UserEconomics>(`admin/users/${userId}/creator-economics`, { token });
 
-// --- Credit rates (cost per model) ---
+// --- Credit rates (usage-metered cost per model) ---
+export type CreditRateUnit = "PER_CALL" | "PER_TOKEN" | "PER_MEGAPIXEL" | "PER_SECOND";
 export type CreditRate = {
   id: string; provider: string; operation: "TEXT" | "IMAGE" | "VIDEO"; model: string;
   inrCostPaise: number; creditCost: number; isActive: boolean;
-  /** Derived (credits x credit value) and (revenue - cost); present on list reads. */
+  /** Metering unit + per-unit rates (paise). Only the field matching `unit` is used. */
+  unit: CreditRateUnit;
+  inputPaisePerMillion: number | null; outputPaisePerMillion: number | null;
+  paisePerMegapixel: number | null; paisePerSecond: number | null;
+  /** Per-model margin override (basis points); null = inherit the global default. */
+  marginBps: number | null;
+  /** Derived on list reads: effective margin + a representative example charge. */
+  effectiveMarginBps?: number;
+  exampleCostPaise?: number; exampleSellPaise?: number; exampleMc?: number;
   revenuePaise?: number; marginPaise?: number;
 };
 export const adminCreditRates = (token: string) =>
-  apiFetch<Paginated<CreditRate> & { inrPerCreditPaise: number }>("admin/credit-rates", { token });
+  apiFetch<Paginated<CreditRate> & { inrPerCreditPaise: number; marginBpsDefault: number }>("admin/credit-rates", { token });
 
 export type CreateCreditRateBody = {
   provider: string;
@@ -195,11 +204,13 @@ export type CreateCreditRateBody = {
   inrCostPaise: number;
   /** Omit to let the server derive a break-even default from the global conversion rate. */
   creditCost?: number;
+  /** Optional per-model margin (basis points); omit to inherit the global default. */
+  marginBps?: number;
 };
 export const createCreditRate = (body: CreateCreditRateBody, token: string) =>
   apiFetch<CreditRate>("admin/credit-rates", { method: "POST", body, token });
 
-export type UpdateCreditRateBody = { inrCostPaise?: number; creditCost?: number; isActive?: boolean };
+export type UpdateCreditRateBody = { inrCostPaise?: number; creditCost?: number; marginBps?: number | null; isActive?: boolean };
 export const updateCreditRate = (id: string, body: UpdateCreditRateBody, token: string) =>
   apiFetch<CreditRate>(`admin/credit-rates/${id}`, { method: "PATCH", body, token });
 

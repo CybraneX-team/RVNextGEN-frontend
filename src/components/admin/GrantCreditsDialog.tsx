@@ -43,7 +43,7 @@ export default function GrantCreditsDialog({ user, token, onClose, onGranted }: 
           <h2 className="text-[18px] font-semibold text-white">Grant credits</h2>
           <button onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-full bg-white/5 text-white/70 hover:bg-white/10">✕</button>
         </div>
-        <p className="mb-4 text-[13px] text-white/50">{user.email} · currently {user.creditsBalance} credits</p>
+        <p className="mb-4 text-[13px] text-white/50">{user.email} · currently {(user.creditsBalance / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits</p>
         {error && <p role="alert" className="mb-3 text-[13px] text-[#ff8f8f]">{error}</p>}
         <div className="flex flex-col gap-3">
           <div>

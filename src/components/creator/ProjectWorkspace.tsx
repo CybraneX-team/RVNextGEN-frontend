@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../AuthProvider";
-import { getCreditBalance, getCreditValue, getProject, type CreatorStep, type ProjectDetail, type StageStatus, type StageView, type StepKind } from "@/lib/creator";
+import { getCreditBalance, getProject, type CreatorStep, type ProjectDetail, type StageStatus, type StageView, type StepKind } from "@/lib/creator";
 import { STAGE_META } from "@/lib/creator-models";
 import CreatorHeader from "./CreatorHeader";
 import StageCard from "./StageCard";
@@ -85,7 +85,6 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
-  const [inrPerCreditPaise, setInrPerCreditPaise] = useState<number | null>(null);
   const [publishJobId, setPublishJobId] = useState<string | null>(null);
   const pollRef = useRef<number | undefined>(undefined);
 
@@ -102,14 +101,6 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch: state is set after the awaited load, not synchronously
   useEffect(() => { void reload(); }, [reload]);
-
-  // Credit->INR value for cost estimates (loaded once; admins change it rarely).
-  useEffect(() => {
-    if (!accessToken) return;
-    let live = true;
-    getCreditValue(accessToken).then((v) => { if (live) setInrPerCreditPaise(v.inrPerCreditPaise); }).catch(() => {});
-    return () => { live = false; };
-  }, [accessToken]);
 
   // Single project-wide poller: runs only while a step is still generating.
   const anyGenerating = useMemo(
@@ -130,10 +121,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const progress = Math.round((completedStages / stages.length) * 100);
   const activeStage = stages.find((stage) => stage.status === "GENERATING" || stage.status === "AVAILABLE" || stage.status === "FAILED") ?? null;
 
-  const stageProps = { projectId, token: accessToken ?? "", balance, inrPerCreditPaise, onChanged: () => void reload() };
-  // Project spend so far (sum of the latest step per stage).
+  const stageProps = { projectId, token: accessToken ?? "", balance, onChanged: () => void reload() };
+  // Project spend so far (sum of the latest step per stage), in millicredits.
   const spentCredits = Object.values(latest).reduce((sum, s) => sum + (s?.creditsUsed ?? 0), 0);
-  const spentPaise = Object.values(latest).reduce((sum, s) => sum + (s?.revenuePaise ?? 0), 0);
 
   return (
     <div className="min-h-dvh bg-[#0e0d0f] text-white">
@@ -165,7 +155,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[.06] pt-3 text-[11px] text-white/40">
             <span>{activeStage ? activeStage.status === "GENERATING" ? `Currently creating: ${STAGE_META[activeStage.kind].label}` : activeStage.status === "FAILED" ? `${STAGE_META[activeStage.kind].label} needs another try` : `${STAGE_META[activeStage.kind].label} is ready when you are` : "Your production pipeline is complete."}</span>
-            {spentCredits > 0 && <span className="text-white/55">Spent so far: {spentCredits} credit{spentCredits === 1 ? "" : "s"}{spentPaise > 0 ? ` ≈ ₹${(spentPaise / 100).toFixed(2)}` : inrPerCreditPaise != null ? ` ≈ ₹${((spentCredits * inrPerCreditPaise) / 100).toFixed(2)}` : ""}</span>}
+            {spentCredits > 0 && <span className="text-white/55">Spent so far: {(spentCredits / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits</span>}
           </div>
         </section>}
 

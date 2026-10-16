@@ -154,7 +154,7 @@ function CreatorView({ token, range, deps }: { token: string; range: AnalyticsRa
         <table className="w-full border-collapse">
           <thead className="bg-white/[0.03]"><tr><th className={th}>Model</th><th className={th}>Op</th><th className={th}>Gens</th><th className={th}>Fail rate</th><th className={th}>Avg latency</th><th className={th}>Credits</th><th className={th}>API cost</th><th className={th}>Margin</th></tr></thead>
           <tbody>{data.models.map((m, i) => (
-            <tr key={i} className="border-t border-white/5"><td className={td}>{m.provider}/{m.model}</td><td className={td}>{m.operation}</td><td className={td}>{m.generations}</td><td className={td}>{pct(m.failureRate)}</td><td className={td}>{m.avgLatencyMs != null ? `${(m.avgLatencyMs / 1000).toFixed(1)}s` : "—"}</td><td className={td}>{m.creditsUsed}</td><td className={td}>{rupees(m.apiCostPaise)}</td><td className={`${td} ${m.marginPaise < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{rupees(m.marginPaise)}</td></tr>
+            <tr key={i} className="border-t border-white/5"><td className={td}>{m.provider}/{m.model}</td><td className={td}>{m.operation}</td><td className={td}>{m.generations}</td><td className={td}>{pct(m.failureRate)}</td><td className={td}>{m.avgLatencyMs != null ? `${(m.avgLatencyMs / 1000).toFixed(1)}s` : "—"}</td><td className={td}>{(m.creditsUsed / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td><td className={td}>{rupees(m.apiCostPaise)}</td><td className={`${td} ${m.marginPaise < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{rupees(m.marginPaise)}</td></tr>
           ))}</tbody>
         </table>
         {data.models.length === 0 && <p className="p-4 text-[13px] text-white/40">No generations in this range.</p>}

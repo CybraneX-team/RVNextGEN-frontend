@@ -60,6 +60,12 @@ export const getCreditBalance = (token: string) =>
 export const getCreditValue = (token: string) =>
   apiFetch<{ inrPerCreditPaise: number }>("creator/credit-value", { token });
 
+/** Pre-submit estimate: the worst-case credit ceiling ("up to N credits") for a model + prompt size. */
+export const quoteStep = (
+  body: { operation: "TEXT" | "IMAGE" | "VIDEO"; provider: string; model: string; promptChars: number },
+  token: string,
+) => apiFetch<{ estimatedMc: number; estimatedCredits: number; sellPaise: number }>("creator/quote", { method: "POST", body, token });
+
 // --- Publish (uses the final ANIMATION step's generationJob id) ---
 export const publishJob = (jobId: string, body: PublishBody, token: string) =>
   apiFetch<PublishResult>(`creator/jobs/${jobId}/publish`, { method: "POST", body, token });
