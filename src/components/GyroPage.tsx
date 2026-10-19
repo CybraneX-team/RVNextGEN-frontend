@@ -99,7 +99,7 @@ export default function GyroPage({ onClose }: { onClose?: () => void }) {
     <div className="absolute inset-0 overflow-hidden">
       <DesertParallax onFeaturedReveal={onFeaturedReveal} />
     </div>
-    {motionPermission && <div className="pointer-events-none absolute inset-x-0 bottom-[max(20px,env(safe-area-inset-bottom))] z-30 flex flex-col items-center gap-2">
+    {motionPermission && <div className="pointer-events-none absolute inset-x-0 bottom-[max(20px,env(safe-area-inset-bottom))] z-30 flex lg:hidden flex-col items-center gap-2">
       {motionMessage && <p role="status" className="rounded-full bg-black/60 px-4 py-2 text-xs text-white/80">{motionMessage}</p>}
       <LiquidGlassButton type="button" onClick={() => void enableMotion()} className="min-h-11 rounded-full px-5 py-3 text-xs text-white">Allow motion access</LiquidGlassButton>
     </div>}

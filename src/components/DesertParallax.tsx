@@ -16,7 +16,7 @@ const EMPTY_EPISODES: number[] = [];
 
 function EpisodeCard({ episode, onOpen, seriesIndex }: { episode: number; onOpen: (selection: EpisodeSelection) => void; seriesIndex: number }) {
   return <button data-episode={episode} type="button" aria-label={`Play Episode ${String(episode).padStart(2, "0")}`} onClick={event => onOpen({ episode, origin: event.currentTarget })} className="series-episode-card group relative aspect-[9/16] shrink-0 snap-start overflow-hidden rounded-[11px] border border-white/15 bg-[#302116] text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white/70">
-    {seriesIndex === 0 ? <span aria-hidden="true" className="absolute inset-[-8px] bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: episode % 2 === 0 ? "url('/images/distant-desert.png')" : "url('/images/foreground-dune.png')", backgroundPosition: episode % 2 === 0 ? `${42 + episode * 3}% center` : `${12 + episode * 2}% bottom` }} /> : <SeriesArtwork index={seriesIndex} />}
+    {seriesIndex === 0 ? <span aria-hidden="true" className="absolute inset-[-8px] bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: episode % 2 === 0 ? "url('/images/distant-desert.png')" : "url('/images/foreground-dune.png')", backgroundPosition: episode % 2 === 0 ? `${42 + episode * 3}% center` : `${12 + episode * 2}% bottom` }} /> : <SeriesArtwork index={seriesIndex} card />}
     <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20" />
     <span className="absolute inset-x-2 bottom-2 text-[11px] font-semibold text-white sm:inset-x-3 sm:bottom-3 sm:text-[13px]">Episode {String(episode).padStart(2, "0")}</span>
   </button>;
@@ -87,6 +87,8 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const swiped = useRef(false);
   const wheelTime = useRef(0);
   const featuredCard = useRef<HTMLElement>(null);
+  const heroCard = useRef<HTMLButtonElement>(null);
+  const desktopStages = useRef<number[]>([0, 3]);
   const [playing, setPlaying] = useState<EpisodeSelection | null>(null);
   const [history, setHistory] = useState<Record<string, number[]>>({});
   const [visibleHistory, setVisibleHistory] = useState<Record<string, number[]>>({});
@@ -95,6 +97,13 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const visibleRecentEpisodes = visibleHistory[series.id] ?? EMPTY_EPISODES;
   const hiddenWatchedEpisodes = hiddenHistory[series.id] ?? EMPTY_EPISODES;
   const upcomingEpisodes = EPISODES.filter(episode => !hiddenWatchedEpisodes.includes(episode));
+  const hasUpcoming = upcomingEpisodes.length > 0;
+  const hasWatched = recentEpisodes.length > 0;
+  const noMoreStages = !hasUpcoming && !hasWatched;
+  useEffect(() => {
+    // Desktop goes straight from the hero to the details view, and has nowhere to scroll without any episodes.
+    desktopStages.current = noMoreStages ? [0] : [0, 3];
+  }, [noMoreStages]);
   useEffect(() => {
     try {
       const restored: Record<string, number[]> = {};
@@ -229,12 +238,14 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
     const updatePreference = () => setReducedMotion(preference.matches);
     updatePreference();
     preference.addEventListener("change", updatePreference);
+    const desktop = window.matchMedia("(min-width: 1024px)");
     let current = restoredStage.current ?? 0;
     try {
       const saved = sessionStorage.getItem("gyro-profile-return-stage");
       if (saved !== null) current = Math.max(0, Math.min(3, Number(saved) || 0));
       sessionStorage.removeItem("gyro-profile-return-stage");
     } catch { /* Keep the initial stage when storage is unavailable. */ }
+    if (current === 1 && desktop.matches) current = 0;
     setStage(current);
     let lockedUntil = 0;
     let lastWheel = -Infinity;
@@ -243,7 +254,14 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
     let touch: { x: number; y: number; consumed: boolean } | null = null;
     const advance = (direction: number) => {
       if (performance.now() < lockedUntil) return;
-      const next = Math.max(0, Math.min(3, current + direction));
+      let next = Math.max(0, Math.min(3, current + direction));
+      if (desktop.matches) {
+        // Desktop shows the featured card beside the hero, so it has no separate card stage.
+        const stages = desktopStages.current;
+        const target = direction > 0 ? stages.find(stage => stage > current) : [...stages].reverse().find(stage => stage < current);
+        if (target === undefined) return;
+        next = target;
+      }
       if (next === current) return;
       current = next;
       setStage(next);
@@ -327,7 +345,6 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
 
   const focus = 1;
   const caption = phase(card, .5, 1);
-  const titleReveal = 1;
   const featuredLift = episodesExpanded && card >= .999 ? 1 : 0;
   const carouselReveal = featuredLift;
   const compact = Boolean(featuredLift && recentlyExpanded);
@@ -391,10 +408,12 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
               <SeriesArtwork index={index} focus={focus} drift={reducedMotion ? 0 : 1} motion={motion} gyro />
             </div>
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent transition-opacity duration-700 motion-reduce:transition-none" style={{ opacity: .12 + caption * .88 }} />
-            <div data-morph-title className="pointer-events-none absolute top-0 left-1/2 w-screen origin-top text-center text-[#fff4df] will-change-transform [text-shadow:0_2px_24px_#30120780]" style={{ opacity: titleReveal }}>
+            <div data-morph-title className={`pointer-events-none absolute top-0 left-1/2 w-screen origin-top text-center text-[#fff4df] transition-opacity duration-500 will-change-transform [text-shadow:0_2px_24px_#30120780]`}>
+            <div className={`origin-top transition-transform duration-700 ease-[cubic-bezier(.22,1,.36,1)]${compact ? " lg:scale-[2]" : ""}`}>
             <div className="px-7 pt-[env(safe-area-inset-top)]" style={{ transform: reducedMotion ? undefined : "translate3d(calc(var(--gyro-x, 0px) * .35), calc(var(--gyro-y, 0px) * .35), 0)" }}>
               <p className="mb-3 text-[clamp(11px,3vw,15px)] font-bold tracking-[.22em]">AN RVNEXTGEN AI ORIGINAL</p>
               <h2 className="m-0 whitespace-nowrap font-serif text-[min(8vw,88px)] leading-[1.08] font-semibold tracking-[-.045em]">{entry.lead} <em className="font-normal">{entry.emphasis}</em> {entry.end}</h2>
+            </div>
             </div>
             </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-6 py-5 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] sm:px-8 sm:py-7" style={{ opacity: caption, transform: `translateY(${(1 - caption) * 16}px)`, visibility: caption > 0 ? "visible" : "hidden" }}>
@@ -416,6 +435,14 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
             <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex - 1)} disabled={seriesIndex === 0} aria-label="Previous series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">‹</span></LiquidGlassButton>
             <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex + 1)} disabled={seriesIndex === GYRO_SERIES.length - 1} aria-label="Next series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">›</span></LiquidGlassButton>
           </nav>}
+          <button ref={heroCard} type="button" aria-label={`Play ${series.title} Episode 01`} aria-hidden={stage !== 0} tabIndex={stage === 0 ? 0 : -1} onClick={() => { if (heroCard.current) setPlaying({ episode: 1, origin: heroCard.current }); }} className="group absolute top-[35dvh] right-[clamp(40px,8vw,160px)] z-[6] hidden aspect-[9/16] h-[min(54dvh,600px)] overflow-hidden rounded-3xl border border-white/15 bg-[#53331f] text-left shadow-[0_40px_120px_#0009] transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white motion-reduce:transition-none lg:block" style={{ opacity: stage === 0 && !playing ? 1 : 0, transform: stage === 0 ? "none" : "translateY(24px)", pointerEvents: stage === 0 ? "auto" : "none" }}>
+            <SeriesArtwork index={seriesIndex} />
+            <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" />
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-7 py-6">
+              <span className="text-[30px] font-bold tracking-[-.04em] text-white">Episode 01</span>
+              <LiquidGlassSurface aria-hidden="true" className="shrink-0 rounded-full"><span className="grid size-[40px] place-items-center rounded-full"><PlayIcon className="size-[14px]" /></span></LiquidGlassSurface>
+            </span>
+          </button>
           <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none lg:right-auto lg:w-[min(32vw,390px)]" style={{ top: "var(--compact-top)", left: "var(--details-left)", opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, pointerEvents: compact ? "auto" : "none" }}>
             <p className="mb-2 text-[10px] font-semibold tracking-[.2em] text-[#f4d6b0]/75">RVNEXTGEN ORIGINAL</p>
             <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">{series.lead} <em className="font-normal">{series.emphasis}</em> {series.end}</h2>
@@ -431,12 +458,12 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
               </LiquidGlassButton>
             </div>
           </aside>
-          <div aria-hidden="true" className="pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70" style={{ opacity: stage === 0 ? 1 : 0 }}>
+          <div aria-hidden="true" className={`pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70${noMoreStages ? " lg:hidden" : ""}`} style={{ opacity: stage === 0 ? 1 : 0 }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
           <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? "calc(var(--compact-top) + max(var(--compact-card-height), 224px) + 24px)" : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
-              <div ref={upcomingSection} className="relative">
+              <div ref={upcomingSection} className={`relative ${hasUpcoming ? "" : "lg:hidden"}`}>
                 <div className="mb-3 flex items-center justify-between gap-3 px-8">
                   <h3 className="text-[13px] font-semibold tracking-[.04em] text-white/85">More episodes</h3>
                   <div className="flex items-center gap-3">

@@ -66,6 +66,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
   const shade = useRef<HTMLDivElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const playerMount = useRef<HTMLDivElement>(null);
+  const playerWrap = useRef<HTMLDivElement>(null);
   const player = useRef<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -73,11 +74,13 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playerError, setPlayerError] = useState("");
+  const [opened, setOpened] = useState(false);
   const closing = useRef(false);
   const dismiss = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (!videoId || !playerMount.current) return;
+    // Load the embed only after the card has finished opening so it can't stall the animation.
+    if (!videoId || !opened || !playerMount.current) return;
     let live = true;
     let instance: YouTubePlayer | null = null;
     void loadYouTubeApi().then(() => {
@@ -112,7 +115,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
       player.current = null;
       instance = null;
     };
-  }, [videoId]);
+  }, [videoId, opened]);
 
   useEffect(() => {
     if (!playing) return;
@@ -131,6 +134,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
     const ui = controls.current!;
     const background = backdrop.current!;
     const tint = shade.current!;
+    const video = playerWrap.current;
     let disposed = false;
     const { origin } = selection;
     const bounds = origin.getBoundingClientRect();
@@ -146,32 +150,34 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
     cover.prepend(clone);
     const hideOriginal = origin.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 0, fill: "forwards" });
     modal.showModal();
-    const rectStyle = (rect: { left: number; top: number; width: number; height: number }, radius: number) => ({
-      left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, borderRadius: `${radius}px`,
-    });
+    // Animate only compositor-friendly properties (transform, clip-path, opacity): the
+    // cover stays full-viewport so the video iframe is never re-laid-out mid-flight.
+    const clip = (rect: { left: number; top: number; width: number; height: number }, radius: number) =>
+      `inset(${rect.top}px ${window.innerWidth - rect.left - rect.width}px ${window.innerHeight - rect.top - rect.height}px ${rect.left}px round ${radius}px)`;
+    const fullClip = clip({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, 0);
+    const radiusFor = (destination: DOMRect) => parseFloat(getComputedStyle(origin).borderTopLeftRadius) * destination.width / origin.offsetWidth;
+    const smallTransform = (destination: DOMRect) => `translate(${destination.left}px,${destination.top}px) scale(${destination.width / origin.offsetWidth},${destination.height / origin.offsetHeight})`;
+    const largeTransform = `translate(0px,0px) scale(${window.innerWidth / origin.offsetWidth},${window.innerHeight / origin.offsetHeight})`;
+    cover.style.clipPath = clip(bounds, radiusFor(bounds));
+    clone.style.transform = smallTransform(bounds);
+    clone.style.willChange = "transform";
     const animate = async (reverse: boolean) => {
       const destination = reverse ? origin.getBoundingClientRect() : bounds;
-      const radius = parseFloat(getComputedStyle(origin).borderTopLeftRadius) * destination.width / origin.offsetWidth;
-      const small = rectStyle(destination, radius);
-      const large = rectStyle({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, 0);
-      const duration = reduced ? 0 : 950;
-      const options: KeyframeAnimationOptions = { duration, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards" };
-      const smallScale = `scale(${destination.width / origin.offsetWidth},${destination.height / origin.offsetHeight})`;
-      const largeScale = `scale(${window.innerWidth / origin.offsetWidth},${window.innerHeight / origin.offsetHeight})`;
+      const duration = reduced ? 0 : reverse ? 520 : 720;
+      const options: KeyframeAnimationOptions = { duration, easing: "cubic-bezier(.32,.72,0,1)", fill: "forwards" };
       // Read the live frame before cancelling so an early close reverses smoothly.
-      const coverStart = reverse ? rectStyle(cover.getBoundingClientRect(), parseFloat(getComputedStyle(cover).borderTopLeftRadius)) : small;
-      const cloneStart = reverse ? getComputedStyle(clone).transform : smallScale;
-      const backgroundStyle = getComputedStyle(background);
-      const backgroundStart = { backgroundColor: backgroundStyle.backgroundColor, backdropFilter: backgroundStyle.backdropFilter };
+      const coverStart = reverse ? getComputedStyle(cover).clipPath : clip(bounds, radiusFor(bounds));
+      const cloneStart = reverse ? getComputedStyle(clone).transform : smallTransform(bounds);
+      const backgroundStart = getComputedStyle(background).backgroundColor;
       const tintStart = getComputedStyle(tint).opacity;
       const controlsStart = getComputedStyle(ui).opacity;
       [cover, clone, background, tint, ui].forEach(node => node.getAnimations().forEach(animation => animation.cancel()));
       const animations = [
-        cover.animate([coverStart, reverse ? small : large], options),
-        clone.animate([{ transform: cloneStart }, { transform: reverse ? smallScale : largeScale }], options),
-        background.animate([backgroundStart, { backgroundColor: reverse ? "rgba(0,0,0,0)" : "rgba(0,0,0,.7)", backdropFilter: reverse ? "blur(0px)" : "blur(16px)" }], options),
+        cover.animate([{ clipPath: coverStart }, { clipPath: reverse ? clip(destination, radiusFor(destination)) : fullClip }], options),
+        clone.animate([{ transform: cloneStart }, { transform: reverse ? smallTransform(destination) : largeTransform }], options),
+        background.animate([{ backgroundColor: backgroundStart }, { backgroundColor: reverse ? "rgba(0,0,0,0)" : "rgba(0,0,0,.7)" }], options),
         tint.animate([{ opacity: tintStart }, { opacity: reverse ? 0 : .4 }], options),
-        ui.animate([{ opacity: controlsStart }, { opacity: reverse ? 0 : 1 }], { ...options, duration: reduced ? 0 : reverse ? 450 : 650, delay: reduced || reverse ? 0 : 300 }),
+        ui.animate([{ opacity: controlsStart }, { opacity: reverse ? 0 : 1 }], { ...options, duration: reduced ? 0 : reverse ? 300 : 450, delay: reduced || reverse ? 0 : 280 }),
       ];
       await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
     };
@@ -179,7 +185,9 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
       if (closing.current) return;
       closing.current = true;
       player.current?.pauseVideo();
-      void animate(true).then(() => {
+      // The full-screen video leaves first so it never shows cropped while the card shrinks.
+      const videoOut = video && !reduced ? video.animate([{ opacity: getComputedStyle(video).opacity }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" }).finished.catch(() => {}) : Promise.resolve();
+      void videoOut.then(() => animate(true)).then(() => {
         if (disposed) return;
         hideOriginal.cancel();
         modal.close();
@@ -187,11 +195,15 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
         previousFocus?.focus({ preventScroll: true });
       });
     };
-    void animate(false);
+    void animate(false).then(() => {
+      if (disposed) return;
+      setOpened(true);
+      video?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduced ? 0 : 350, easing: "ease-out", fill: "forwards" });
+    });
     return () => {
       disposed = true;
       hideOriginal.cancel();
-      [cover, clone, background, tint, ui].forEach(node => node.getAnimations().forEach(animation => animation.cancel()));
+      [cover, clone, background, tint, ui, ...(video ? [video] : [])].forEach(node => node.getAnimations().forEach(animation => animation.cancel()));
       clone.remove();
       modal.close();
     };
@@ -208,9 +220,9 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
 
   return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onCancel={event => { event.preventDefault(); dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
     <div ref={backdrop} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-transparent backdrop-blur-none" />
-    <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute overflow-hidden bg-[#302116] [&>*]:origin-top-left">
+    <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#302116] will-change-[clip-path] [&>*]:origin-top-left">
       <div ref={shade} className="absolute inset-0 z-[1] bg-black opacity-0" />
-      {videoId && <div ref={playerMount} className="absolute inset-0 z-[2] [&_iframe]:size-full [&_iframe]:border-0" />}
+      {videoId && <div ref={playerWrap} className="absolute inset-0 z-[2] opacity-0"><div ref={playerMount} className="absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0" /></div>}
     </div>
     <div ref={controls} className="absolute inset-0 z-20 opacity-0">
       <div className="pointer-events-auto absolute top-[max(16px,env(safe-area-inset-top))] left-4"><LiquidGlassButton type="button" autoFocus onClick={() => dismiss.current()} aria-label="Close video and return to episodes" title="Back to episodes" className="grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
