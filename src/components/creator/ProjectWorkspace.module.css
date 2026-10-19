@@ -1,0 +1,27 @@
+.canvas {
+  background-color: #0d0d0e;
+  background-image: radial-gradient(#ffffff0b 0.7px, transparent 0.7px);
+  background-size: 22px 22px;
+}
+
+.canvasViewport { cursor: grab; touch-action: none; }
+.canvasViewport[data-dragging] { cursor: grabbing; }
+.canvasWorld { position: absolute; inset: 0 auto auto 0; width: 0; height: 0; transform-origin: 0 0; transition: transform 360ms cubic-bezier(.22, 1, .36, 1), opacity 150ms ease; will-change: transform; }
+.canvasViewport[data-dragging] .canvasWorld,
+.canvasViewport[data-wheeling] .canvasWorld,
+.canvasViewport[data-instant] .canvasWorld { transition: none; }
+.canvasCard { position: absolute; top: 0; max-height: min(78vh, 780px); overflow-y: auto; border-radius: 20px; border: 1px solid transparent; box-shadow: 0 24px 65px #0007; cursor: pointer; scrollbar-width: thin; scrollbar-color: #ffffff33 transparent; }
+.canvasCardSelected { border-color: #ffffff88; box-shadow: 0 0 0 3px #ffffff13, 0 28px 70px #0009; }
+
+.enter {
+  animation: arrive 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes arrive {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter { animation: none; }
+}

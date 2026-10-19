@@ -1,0 +1,26 @@
+.document {
+  color: rgb(255 255 255 / .75);
+  font-size: 15px;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+.document :global(.tiptap) { outline: none; min-height: 150px; }
+.document :global(h1) { margin: 0 0 .9em; color: #f7f5f2; font-size: clamp(25px, 2.4vw, 34px); font-weight: 600; line-height: 1.2; letter-spacing: -.035em; }
+.document :global(h2) { margin: 1.7em 0 .65em; color: #f4f2f0; font-size: 21px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em; }
+.document :global(h3) { margin: 1.5em 0 .55em; color: #eee; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.document :global(p) { margin: 0 0 1.1em; }
+.document :global(p:last-child) { margin-bottom: 0; }
+.document :global(strong) { color: #f3f3f3; font-weight: 650; }
+.document :global(em) { color: #e9e4df; }
+.document :global(ul) { margin: .55em 0 1.2em; padding-left: 1.45em; list-style: disc; }
+.document :global(ol) { margin: .55em 0 1.2em; padding-left: 1.45em; list-style: decimal; }
+.document :global(li) { padding-left: .2em; margin: .35em 0; }
+.document :global(li p) { margin: 0; }
+.document :global(blockquote) { margin: 1.3em 0; padding: .15em 0 .15em 1em; border-left: 2px solid rgb(255 255 255 / .25); color: rgb(255 255 255 / .6); }
+.document :global(hr) { margin: 2em 0; border: 0; border-top: 1px solid rgb(255 255 255 / .12); }
+.document :global(code) { border-radius: 4px; background: rgb(255 255 255 / .08); padding: .1em .3em; color: #eee; font-size: .9em; }
+.document :global(pre) { overflow-x: auto; border-radius: 10px; background: #0c0c0d; padding: 1em; }
+.document :global(pre code) { background: none; padding: 0; }
+.document :global(a) { color: #ddd; text-decoration: underline; text-underline-offset: 3px; }
+.editing :global(.tiptap) { min-height: 320px; }
+.editing :global(.tiptap:focus-visible) { outline: none; }
