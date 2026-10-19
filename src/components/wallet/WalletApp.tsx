@@ -30,7 +30,7 @@ export default function WalletApp() {
     if (!accessToken) return;
     try {
       const [b, h] = await Promise.all([walletBalance(accessToken), walletHistory(accessToken)]);
-      setBalance(b.balanceMinor); setCurrency(b.currency); if (b.currency !== 'INR') setProvider('stripe'); setHistory(h.items);
+      setBalance(b.balanceMinor); setCurrency(b.currency); setHistory(h.items);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load your wallet"); }
   }, [accessToken]);
 
@@ -38,7 +38,7 @@ export default function WalletApp() {
     if (!accessToken) return;
     let live = true;
     walletPacks(accessToken).then((p) => { if (live) setPacks(p); }).catch(() => {});
-    walletRegion(accessToken).then((r) => { if (live) setRegion(r); }).catch(() => {});
+    walletRegion(accessToken).then((r) => { if (live) { setRegion(r); setProvider(r.provider); } }).catch(() => {});
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload fetches then sets state; not a synchronous cascade
     void reload();
     return () => { live = false; };
@@ -114,11 +114,7 @@ export default function WalletApp() {
         <section className="mb-9">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[15px] font-semibold">Add funds</h2>
-            <div className="flex gap-1 rounded-lg border border-white/12 p-0.5 text-[12px]">
-              {(["razorpay", "stripe"] as Gateway[]).map((g) => (
-                <button key={g} onClick={() => setProvider(g)} className={`rounded-md px-3 py-1 capitalize ${provider === g ? "bg-white/10 text-white" : "text-white/55 hover:text-white/80"}`}>{g}</button>
-              ))}
-            </div>
+            {region && <span className="rounded-md border border-white/12 px-2.5 py-1 text-[12px] capitalize text-white/60">Pay via {region.provider}</span>}
           </div>
           {packs == null ? <p className="text-[13px] text-white/40">Loading packs…</p> : packs.length === 0 ? <p className="text-[13px] text-white/40">No packs available yet.</p> : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

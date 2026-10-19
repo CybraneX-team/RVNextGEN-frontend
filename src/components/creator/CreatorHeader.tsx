@@ -30,6 +30,7 @@ export default function CreatorHeader({ reloadKey = 0, balance: externalBalance 
           <span className="rounded-full border border-[#e5b27f]/20 bg-[#e5b27f]/[.07] px-2.5 py-1.5 text-[11px] font-medium text-[#e7bd94] sm:px-3 sm:text-[12px]" title="Your generation credits">
             {balance == null ? "…" : `${(balance / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits`}
           </span>
+          <Link href="/creator/credits" className="rounded-lg border border-[#e5b27f]/25 bg-[#e5b27f]/[.08] px-2.5 py-1.5 text-[11px] font-medium text-[#e7bd94] transition-colors hover:bg-[#e5b27f]/[.14] sm:px-3 sm:text-[12px]">Buy credits</Link>
           <Link href="/" className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-white/65 transition-colors hover:border-white/20 hover:bg-white/5 sm:px-3 sm:text-[12px]">Back to app</Link>
         </div>
       </div>

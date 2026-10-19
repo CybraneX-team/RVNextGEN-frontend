@@ -30,6 +30,7 @@ export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {})
         ...(body !== undefined && !isFormData ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(deviceId ? { "x-device-id": deviceId } : {}),
+        ...devGeoHeader(),
         ...(headers ?? {}),
       },
       body: body === undefined ? undefined : isFormData ? body as BodyInit : JSON.stringify(body),
@@ -48,4 +49,15 @@ export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {})
   }
   if (!response.ok) throw new ApiError(messageFrom(data, "Something went wrong. Try again."), response.status);
   return data as T;
+}
+
+/**
+ * Dev-only: send the page's ?geo=XX as an x-geo-test header so region-based pricing/gateway can be
+ * previewed without a real geo-IP. A header (not a query param) avoids colliding with strict query
+ * validation. Stripped in production builds; the backend also ignores it in production.
+ */
+function devGeoHeader(): Record<string, string> {
+  if (process.env.NODE_ENV === "production" || typeof window === "undefined") return {};
+  const geo = new URLSearchParams(window.location.search).get("geo");
+  return geo && /^[A-Za-z]{2}$/.test(geo) ? { "x-geo-test": geo.toUpperCase() } : {};
 }

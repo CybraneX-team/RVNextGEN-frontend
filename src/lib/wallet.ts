@@ -7,7 +7,7 @@ export type WalletHistory = { currency: string; balanceMinor: number; items: Coi
 export type UnlockPreview = { episodeId: string; title: string; priceMinor: number; currency: string; alreadyUnlocked: boolean; balanceMinor: number; sufficient: boolean; expiresAt?: string | null; quoteId: string | null; quoteExpiresAt?: string };
 export type UnlockResult = { entitled: boolean; alreadyUnlocked: boolean; chargedMinor: number; currency: string; balanceMinor: number; expiresAt: string | null };
 export type Gateway = "razorpay" | "stripe";
-export type WalletRegion = { detectedCountryCode: string | null; countryCode: string; currency: string; source: "edge" | "ip" | "test" | "unknown" };
+export type WalletRegion = { detectedCountryCode: string | null; countryCode: string; currency: string; provider: Gateway; source: "edge" | "ip" | "test" | "unknown" };
 
 type RazorpayCheckout = { providerOrderId: string; keyId: string; reused?: boolean };
 type StripeCheckout = { providerOrderId: string; clientSecret: string; publishableKey: string; reused?: boolean };
