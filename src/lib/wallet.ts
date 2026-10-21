@@ -12,12 +12,16 @@ export type WalletRegion = { detectedCountryCode: string | null; countryCode: st
 type RazorpayCheckout = { providerOrderId: string; keyId: string; reused?: boolean };
 type StripeCheckout = { providerOrderId: string; clientSecret: string; publishableKey: string; reused?: boolean };
 type CheckoutResponse = (RazorpayCheckout | StripeCheckout) & { walletPurchaseId: string; provider: Gateway; amountCreditedMinor?: number };
+export type WalletPaymentStatus = { id: string; status: "PENDING" | "SUCCEEDED" | "FAILED" };
+type RazorpayVerification = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 
 // ---- API ----
 export const walletPacks = (token: string) => apiFetch<WalletPack[]>("wallet/packs", { token });
 export const walletRegion = (token: string) => apiFetch<WalletRegion>("wallet/region", { token });
 export const walletBalance = (token: string) => apiFetch<{ balanceMinor: number; currency: string }>("wallet/me", { token });
 export const walletHistory = (token: string, page = 1) => apiFetch<WalletHistory>(`wallet/transactions?page=${page}&limit=20`, { token });
+export const reconcileWallet = (token: string) => apiFetch<{ recovered: number; unavailable: number }>("wallet/reconcile", { method: "POST", token });
+export const reconcileWalletPurchase = (id: string, token: string) => apiFetch<WalletPaymentStatus>(`wallet/purchases/${id}/reconcile`, { method: "POST", token });
 export const unlockPreview = (episodeId: string, token: string) => apiFetch<UnlockPreview>(`wallet/unlock-preview/${episodeId}`, { token });
 export const unlockEpisode = (episodeId: string, quoteId: string, token: string) => apiFetch<UnlockResult>(`wallet/unlock/${episodeId}`, { method: "POST", body: { quoteId }, token });
 const walletCheckout = (walletPackId: string, provider: Gateway, idempotencyKey: string, token: string) =>
@@ -41,23 +45,23 @@ export function loadGatewayScript(src: string): Promise<void> {
 }
 
 /**
- * Start a top-up for a pack. Opens the chosen gateway's payment UI. Funds are credited
- * server-side by the payment webhook, so the caller should poll the balance afterwards.
- * Resolves when the user completes/submits payment, rejects if they cancel or it errors.
+ * Razorpay success is verified by the server before returning a purchase status.
+ * Webhooks and reconciliation use the same atomic wallet credit operation.
  */
-export async function startTopUp(pack: WalletPack, provider: Gateway, token: string, user: { email: string }): Promise<void> {
+export async function startTopUp(pack: WalletPack, provider: Gateway, token: string, user: { email: string }): Promise<WalletPaymentStatus | void> {
   const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const res = await walletCheckout(pack.id, provider, idempotencyKey, token);
-  if (provider === "razorpay") return openRazorpay(res as RazorpayCheckout & CheckoutResponse, pack, user);
+  if (provider === "razorpay") return openRazorpay(res as RazorpayCheckout & CheckoutResponse, pack, user, token);
   return openStripe(res as StripeCheckout & CheckoutResponse);
 }
 
 
 
-async function openRazorpay(res: RazorpayCheckout, pack: WalletPack, user: { email: string }): Promise<void> {
+async function openRazorpay(res: RazorpayCheckout & { walletPurchaseId: string }, pack: WalletPack, user: { email: string }, token: string): Promise<WalletPaymentStatus> {
   await loadGatewayScript("https://checkout.razorpay.com/v1/checkout.js");
   if (!window.Razorpay) throw new Error("Could not load Razorpay.");
-  return new Promise((resolve, reject) => {
+  return new Promise<WalletPaymentStatus>((resolve, reject) => {
+    let submitted = false;
     const rzp = new window.Razorpay!({
       key: res.keyId,
       order_id: res.providerOrderId,
@@ -67,8 +71,14 @@ async function openRazorpay(res: RazorpayCheckout, pack: WalletPack, user: { ema
       description: `Viewer wallet ${pack.currency} top-up`,
       prefill: { email: user.email },
       theme: { color: "#2f7d5b" },
-      handler: () => resolve(),
-      modal: { ondismiss: () => reject(new Error("Payment cancelled")) },
+      handler: (verification: RazorpayVerification) => {
+        submitted = true;
+        apiFetch<WalletPaymentStatus>(`wallet/purchases/${res.walletPurchaseId}/verify`, { method: "POST", body: verification, token }).then(resolve).catch(() => {
+          // A network failure after payment must lead to a provider check, never another charge.
+          reconcileWalletPurchase(res.walletPurchaseId, token).then(resolve).catch(() => reject(new Error("Payment was submitted, but verification is unavailable. Reopen your wallet to check it; do not pay again.")));
+        });
+      },
+      modal: { ondismiss: () => { if (!submitted) reject(new Error("Payment cancelled")); } },
     });
     rzp.open();
   });

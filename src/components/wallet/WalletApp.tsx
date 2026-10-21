@@ -4,17 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import {
-  confirmStripe, startTopUp, walletBalance, walletHistory, walletPacks, walletRegion,
+  confirmStripe, reconcileWallet, reconcileWalletPurchase, startTopUp, walletBalance, walletHistory, walletPacks, walletRegion,
   type CoinTxn, type Gateway, type WalletPack, type WalletRegion,
 } from "@/lib/wallet";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatCredits } from "@/lib/money";
 
 const TXN_LABEL: Record<CoinTxn["type"], string> = { TOPUP: "Top-up", UNLOCK: "Episode unlock", REFUND: "Refund", ADJUSTMENT: "Adjustment" };
 
 export default function WalletApp() {
   const { accessToken, user } = useAuth();
   const [balance, setBalance] = useState<number | null>(null);
-  const [currency, setCurrency] = useState("INR");
   const [region, setRegion] = useState<WalletRegion | null>(null);
   const [packs, setPacks] = useState<WalletPack[] | null>(null);
   const [history, setHistory] = useState<CoinTxn[]>([]);
@@ -30,7 +29,7 @@ export default function WalletApp() {
     if (!accessToken) return;
     try {
       const [b, h] = await Promise.all([walletBalance(accessToken), walletHistory(accessToken)]);
-      setBalance(b.balanceMinor); setCurrency(b.currency); setHistory(h.items);
+      setBalance(b.balanceMinor); setHistory(h.items);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load your wallet"); }
   }, [accessToken]);
 
@@ -41,6 +40,12 @@ export default function WalletApp() {
     walletRegion(accessToken).then((r) => { if (live) { setRegion(r); setProvider(r.provider); } }).catch(() => {});
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reload fetches then sets state; not a synchronous cascade
     void reload();
+    // Recover captured top-ups whose webhook or browser callback was missed.
+    reconcileWallet(accessToken).then((result) => {
+      if (!live) return;
+      if (result.recovered) { setNotice("Your completed top-ups have been added to your wallet."); void reload(); }
+      if (result.unavailable) setError("Some pending payments could not be checked. Reopen your wallet to retry; do not pay again.");
+    }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Could not check pending payments"); });
     return () => { live = false; };
   }, [accessToken, reload]);
 
@@ -60,10 +65,15 @@ export default function WalletApp() {
     if (provider === "stripe") { setStripePack(pack); return; }
     setBusyPack(pack.id);
     try {
-      const before = balance;
-      await startTopUp(pack, "razorpay", accessToken, { email: user.email });
-      setNotice("Payment received — updating your wallet…");
-      const ok = await pollBalance(before);
+      let payment = await startTopUp(pack, "razorpay", accessToken, { email: user.email });
+      if (!payment) throw new Error("Payment confirmation was not returned");
+      setNotice("Checking payment confirmation…");
+      for (let attempt = 0; payment.status === "PENDING" && attempt < 8; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        payment = await reconcileWalletPurchase(payment.id, accessToken);
+      }
+      const ok = payment.status === "SUCCEEDED";
+      await reload();
       setNotice(ok ? "Funds added to your wallet." : "Payment is processing; your balance will update shortly.");
     } catch (e) { if ((e as Error).message !== "Payment cancelled") setError(e instanceof Error ? e.message : "Payment failed"); }
     finally { setBusyPack(null); }
@@ -102,9 +112,9 @@ export default function WalletApp() {
       </header>
       <main className="mx-auto max-w-3xl px-4 pb-16 pt-6 sm:px-6">
         <section className="mb-7 rounded-2xl border border-[#2f7d5b]/25 bg-[radial-gradient(ellipse_at_top_right,rgba(47,125,91,.18),transparent_60%),#141615] p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">{currency} wallet balance</p>
-          <p className="mt-2 text-[40px] font-semibold tracking-[-1px]">{balance == null ? "…" : formatMoney(balance, currency)}</p>
-          <p className="mt-1 text-[12px] text-white/40">Use your wallet to unlock episodes for one year.</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">Episode credits</p>
+          <p className="mt-2 text-[40px] font-semibold tracking-[-1px]">{balance == null ? "…" : formatCredits(balance)}</p>
+          <p className="mt-1 text-[12px] text-white/40">Use credits to unlock episodes for one year.</p>
           {region && <p className="mt-2 text-[12px] text-white/50">Region: {region.detectedCountryCode ?? 'unknown'} · {region.source === 'unknown' ? 'Showing INR until your country can be determined' : region.source === 'test' ? 'Development test region' : `Detected from ${region.source === 'ip' ? 'network location' : 'network edge'}`}</p>}
         </section>
 
@@ -121,7 +131,7 @@ export default function WalletApp() {
               {packs.map((p) => (
                 <div key={p.id} className="flex flex-col rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <span className="text-[13px] font-medium text-white/80">{p.name}</span>
-                  <span className="mt-1 text-[22px] font-semibold">{formatMoney(p.creditAmountMinor, p.currency)}</span>
+                  <span className="mt-1 text-[22px] font-semibold">{formatCredits(p.creditAmountMinor)}</span>
                   <span className="mt-1 text-[13px] text-white/55">Pay {formatMoney(p.pricePaise, p.currency)}</span>
                   <button onClick={() => void buy(p)} disabled={busyPack === p.id} className="mt-3 h-9 rounded-md bg-[#2f7d5b] text-[13px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{busyPack === p.id ? "Opening…" : "Buy"}</button>
                 </div>
@@ -137,7 +147,7 @@ export default function WalletApp() {
               {history.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 px-4 py-3">
                   <div><p className="text-[13px] text-white/80">{TXN_LABEL[t.type]}</p><p className="text-[11px] text-white/40">{new Date(t.createdAt).toLocaleString()}</p>{t.accessExpiresAt && <p className="text-[11px] text-[#9fe0bd]">Access until {new Date(t.accessExpiresAt).toLocaleString()}</p>}</div>
-                  <div className="text-right"><p className={`text-[14px] font-semibold ${t.deltaMinor < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{t.deltaMinor > 0 ? "+" : ""}{formatMoney(t.deltaMinor, currency)}</p><p className="text-[11px] text-white/40">bal {formatMoney(t.balanceAfterMinor, currency)}</p></div>
+                  <div className="text-right"><p className={`text-[14px] font-semibold ${t.deltaMinor < 0 ? "text-[#ff8f8f]" : "text-[#9fe0bd]"}`}>{t.deltaMinor > 0 ? "+" : ""}{formatCredits(t.deltaMinor)}</p><p className="text-[11px] text-white/40">bal {formatCredits(t.balanceAfterMinor)}</p></div>
                 </li>
               ))}
             </ul>

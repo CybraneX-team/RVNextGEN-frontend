@@ -3,13 +3,22 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth, AuthGate } from "@/components/AuthProvider";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LiquidGlassButton } from "@/components/LiquidGlassSurface";
+import { walletBalance } from "@/lib/wallet";
+import { formatCredits } from "@/lib/money";
 
 function ProfileContent() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, accessToken } = useAuth();
   const router = useRouter();
   const [imageFailed, setImageFailed] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+  useEffect(() => {
+    if (!accessToken) return;
+    let live = true;
+    walletBalance(accessToken).then(b => { if (live) setCredits(b.balanceMinor); }).catch(() => { /* Keep the entry usable even if the balance can't load. */ });
+    return () => { live = false; };
+  }, [accessToken]);
   const initials = (user?.displayName?.trim().split(/\s+/).slice(0, 2).map(name => name[0]).join("") || user?.email?.[0] || "U").toUpperCase();
 
   async function logout() {
@@ -56,7 +65,14 @@ function ProfileContent() {
           <span className="text-[13px] text-white/50">Email status</span><span className={`inline-flex items-center gap-2 text-[12px] ${user?.emailVerified ? "text-[#a9d6b7]" : "text-[#e5b27f]"}`}><span className="size-1.5 rounded-full bg-current" />{user?.emailVerified ? "Verified" : "Pending verification"}</span>
         </div>
       </section>
-      <Link href="/creator" className="group mt-5 flex min-h-[88px] items-center gap-4 rounded-[20px] border border-[#d9a26d]/20 bg-[radial-gradient(ellipse_at_top_right,rgba(167,91,47,.2),transparent_65%),linear-gradient(135deg,#211710,#171416)] px-4 py-4 transition-[transform,border-color] hover:-translate-y-0.5 hover:border-[#e5b27f]/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e5b27f] sm:mt-6 sm:min-h-[96px] sm:px-5">
+      <Link href="/wallet" className="group mt-5 flex min-h-[88px] items-center gap-4 rounded-[20px] border border-[#2f7d5b]/22 bg-[radial-gradient(ellipse_at_top_right,rgba(47,125,91,.2),transparent_65%),linear-gradient(135deg,#10201a,#141616)] px-4 py-4 transition-[transform,border-color] hover:-translate-y-0.5 hover:border-[#2f7d5b]/45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f7d5b] sm:mt-6 sm:min-h-[96px] sm:px-5">
+        <span className="grid size-11 shrink-0 place-items-center rounded-[14px] border border-[#8fcab0]/20 bg-[#8fcab0]/[.08] text-[#9fe0bd] sm:size-12">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.5"><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></svg>
+        </span>
+        <span className="min-w-0 flex-1 text-left"><span className="block text-[14px] font-semibold text-white">Episode Credits</span><span className="mt-1 block text-[11px] leading-4 text-white/55 sm:text-xs">{credits == null ? "Add credits to unlock episodes" : `${formatCredits(credits)} · Add more to unlock episodes`}</span></span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0 text-white/45 transition-transform group-hover:translate-x-1 group-hover:text-[#9fe0bd]" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+      </Link>
+      <Link href="/creator" className="group mt-4 flex min-h-[88px] items-center gap-4 rounded-[20px] border border-[#d9a26d]/20 bg-[radial-gradient(ellipse_at_top_right,rgba(167,91,47,.2),transparent_65%),linear-gradient(135deg,#211710,#171416)] px-4 py-4 transition-[transform,border-color] hover:-translate-y-0.5 hover:border-[#e5b27f]/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e5b27f] sm:mt-6 sm:min-h-[96px] sm:px-5">
         <span className="grid size-11 shrink-0 place-items-center rounded-[14px] border border-[#e5b27f]/20 bg-[#e5b27f]/[.08] text-[#e8b582] sm:size-12">
           <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 3 14.5 9.5 21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z" /><path d="m19 2 .8 2.2L22 5l-2.2.8L19 8l-.8-2.2L16 5l2.2-.8L19 2Z" /></svg>
         </span>

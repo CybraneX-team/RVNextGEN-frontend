@@ -5,8 +5,7 @@ import { apiFetch } from "@/lib/client";
 import type { ApiContent, Playback } from "@/lib/content";
 import EpisodePurchaseSheet from "./EpisodePurchaseSheet";
 import { LiquidGlassButton } from "./LiquidGlassSurface";
-
-const seriesKeys = [process.env.NEXT_PUBLIC_DESERT_SERIES_ID || "a-bond-beyond-words", process.env.NEXT_PUBLIC_CAMEL_SERIES_ID || "beyond-the-dunes"];
+import { seriesSlugs as seriesKeys } from "./GyroSeries";
 
 /** Resolve artwork's series to published content. Never charge for an unmapped placeholder. */
 export default function HomeEpisodeAccess({ seriesIndex, episode, onReady, onClose }: { seriesIndex: number; episode: number; onReady: (playback: Playback) => void; onClose: () => void }) {

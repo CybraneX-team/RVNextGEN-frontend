@@ -74,7 +74,7 @@ export default function CreatorApp() {
         <div className="ml-auto flex gap-3">
           <label className="flex h-10 w-full max-w-[520px] items-center gap-2.5 rounded-full border border-white/[.12] bg-[#111112] px-4 text-white/40 transition-colors focus-within:border-white/30"><Search className="size-4 shrink-0" /><span className="sr-only">Search projects</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your projects" className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/35" /></label>
           <button type="button" onClick={() => focusCreate()} className="hidden h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#fa5b2d] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#ff7049] sm:inline-flex"><Plus className="size-4" /> New project</button>
-          <span className="hidden shrink-0 h-10 rounded-full border border-white/[.09] px-3 py-2 text-sm text-white/50 xl:flex items-center gap-2"><Coins />{balance == null ? "…" : balance.toLocaleString()}</span>
+          <span className="hidden shrink-0 h-10 rounded-full border border-white/[.09] px-3 py-2 text-sm text-white/50 xl:flex items-center gap-2"><Coins />{balance == null ? "…" : `${(balance / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} credits`}</span>
         </div>
       </header>
 

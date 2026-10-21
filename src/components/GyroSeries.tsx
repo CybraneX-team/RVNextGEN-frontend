@@ -3,6 +3,16 @@ export const GYRO_SERIES = [
   { id: "camel", title: "Beyond the dunes.", lead: "Beyond", emphasis: "the", end: "dunes.", description: "Across shifting sands, a lone traveller follows the light of a restless sky.", historyKey: "gyro-camel-recent-episodes" },
 ] as const;
 
+/**
+ * Backend slugs the home artwork maps to, index-aligned with {@link GYRO_SERIES}. Overridable per
+ * environment; the defaults match the seeded series (see backend `seed:home-series`). Single source
+ * of truth for both the episode-grid fetch and the per-episode access/payment gate.
+ */
+export const seriesSlugs = [
+  process.env.NEXT_PUBLIC_DESERT_SERIES_ID || "a-bond-beyond-words",
+  process.env.NEXT_PUBLIC_CAMEL_SERIES_ID || "beyond-the-dunes",
+];
+
 export function SeriesArtwork({ index, tilt = { x: 0, y: 0 }, focus = 0, drift = 0, motion = 1, gyro = false, card = false }: { index: number; tilt?: { x: number; y: number }; focus?: number; drift?: number; motion?: number; gyro?: boolean; card?: boolean }) {
   const x = (amount: number) => gyro ? `calc(var(--gyro-x, 0px) * ${amount * drift})` : `${tilt.x * amount * drift}px`;
   const y = (amount: number, offset = 0) => gyro ? `calc(var(--gyro-y, 0px) * ${amount * drift} + ${offset}px)` : `${tilt.y * amount * drift + offset}px`;

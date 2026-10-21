@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api";
 import { getDeviceId } from "@/lib/device";
 import { unlockEpisode, unlockPreview, walletRegion, type UnlockPreview, type WalletRegion } from "@/lib/wallet";
 import { beginCheckout, bundlesForSeries, mountEpisodeStripe, purchaseStatus, showEpisodeRazorpay, type EpisodeBundle, type PendingCheckout } from "@/lib/episode-payments";
+import { formatCredits } from "@/lib/money";
 
 const money = (amount: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(amount / 100);
 const primary = "flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#161412] outline-offset-4 hover:bg-[#f3e5d5] disabled:cursor-wait disabled:opacity-50";
@@ -71,10 +72,14 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
     modal.showModal();
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null") as PendingCheckout | null;
-      if (saved?.key && ["episode", "package"].includes(saved.kind)) {
+      // Episodes are unlocked with credits now; only package checkouts use the gateway, so a saved
+      // episode checkout is stale (from the removed per-episode gateway flow) — discard it.
+      if (saved?.key && saved.kind === "package") {
         pending.current = saved;
         // eslint-disable-next-line react-hooks/set-state-in-effect -- restore this user’s saved checkout after hydration
-        setSavedCheckout(saved); setChoice(saved.kind === "episode" ? "episode" : saved.targetId);
+        setSavedCheckout(saved); setChoice(saved.targetId);
+      } else if (saved) {
+        try { localStorage.removeItem(storageKey); } catch { /* Nothing to clean up if storage is unavailable. */ }
       }
     } catch { /* A malformed saved checkout can be ignored. */ }
     void refresh();
@@ -110,9 +115,14 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
         setPreview(fresh);
         if (choice === "episode" && (fresh.priceMinor !== preview.priceMinor || fresh.currency !== preview.currency)) { setNotice("The episode price changed. Review the updated price before continuing."); setPhase("choose"); return; }
         if (choice === "episode" && fresh.sufficient && fresh.quoteId) {
-          await unlockEpisode(episodeId, fresh.quoteId, token); await play(); return;
+          await unlockEpisode(episodeId, fresh.quoteId, token);
+          window.dispatchEvent(new Event("wallet:balance-changed"));
+          await play(); return;
         }
-        remember({ key: crypto.randomUUID(), kind: choice === "episode" ? "episode" : "package", targetId: choice === "episode" ? episodeId : choice, quoteId: choice === "episode" ? fresh.quoteId! : undefined, provider: region.provider });
+        // Episodes are paid for with episode credits only. When the balance is short, send the
+        // viewer to top up their credits rather than a per-episode gateway charge.
+        if (choice === "episode") { setNotice(`You need ${formatCredits(fresh.priceMinor)} to unlock this. Add episode credits from your Wallet, then come back to unlock it.`); setPhase("choose"); return; }
+        remember({ key: crypto.randomUUID(), kind: "package", targetId: choice, provider: region.provider });
       }
       const current = pending.current!;
       const checkout = await beginCheckout(current, token);
@@ -155,7 +165,7 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
   }
 
   const selected = bundles.find(bundle => bundle.id === choice);
-  const label = choice === "episode" && preview ? `${preview.sufficient ? "Unlock with wallet" : "Pay"} · ${money(preview.priceMinor, preview.currency)}` : selected ? `Pay · ${money(selected.pricePaise, selected.currency)}` : "Continue";
+  const label = choice === "episode" && preview ? (preview.sufficient ? `Unlock · ${formatCredits(preview.priceMinor)}` : "Add credits to unlock") : selected ? `Pay · ${money(selected.pricePaise, selected.currency)}` : "Continue";
   return <dialog ref={dialog} aria-labelledby="episode-purchase-title" onCancel={event => { event.preventDefault(); callbacks.current.onClose(); }} className="fixed inset-x-0 top-auto bottom-0 m-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-[28px] border border-white/15 bg-[#191715] p-0 text-[#faf7f2] shadow-2xl backdrop:bg-black/70 sm:inset-0 sm:m-auto sm:max-h-[90dvh] sm:w-[480px] sm:rounded-[28px]">
     <div className="p-6 pb-[max(24px,env(safe-area-inset-bottom))] sm:p-8">
       <div className="mb-6 flex items-center justify-between"><span className="flex items-center gap-2 text-xs font-medium tracking-widest text-[#d7b38c]"><LockKeyhole size={15} /> RVNEXT GEN · PREMIUM</span><LiquidGlassButton aria-label="Close purchase" onClick={() => callbacks.current.onClose()} className="grid size-11 place-items-center rounded-full"><X size={19} /></LiquidGlassButton></div>
@@ -164,14 +174,16 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
       <div className="mt-6 space-y-3">
         {busy && <p role="status" className="flex items-center gap-3 py-6 text-sm"><LoaderCircle className="animate-spin motion-reduce:animate-none" size={20} />{phase === "loading" ? "Checking your access…" : phase === "confirming" ? "Confirming your payment securely…" : "Preparing secure checkout…"}</p>}
         {preview && phase === "choose" && <fieldset disabled={Boolean(savedCheckout)} className="space-y-3"><legend className="sr-only">Choose episode access</legend>
-          <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 ${choice === "episode" ? "border-[#d7b38c] bg-[#302820]" : "border-white/15 bg-white/[.03]"}`}><input type="radio" name="episode-access" value="episode" checked={choice === "episode"} onChange={() => setChoice("episode")} className="size-4 accent-[#d7b38c]" /><span className="flex-1"><span className="block text-sm font-semibold">This episode</span><span className="mt-1 block text-xs text-[#c8c2bc]">Watch again for 1 year · One-time purchase</span></span><strong className="text-lg">{money(preview.priceMinor, preview.currency)}</strong></label>
+          <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 ${choice === "episode" ? "border-[#d7b38c] bg-[#302820]" : "border-white/15 bg-white/[.03]"}`}><input type="radio" name="episode-access" value="episode" checked={choice === "episode"} onChange={() => setChoice("episode")} className="size-4 accent-[#d7b38c]" /><span className="flex-1"><span className="block text-sm font-semibold">This episode</span><span className="mt-1 block text-xs text-[#c8c2bc]">Watch again for 1 year · One-time purchase</span></span><strong className="text-lg">{formatCredits(preview.priceMinor)}</strong></label>
           {bundles.map(bundle => <label key={bundle.id} className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 ${choice === bundle.id ? "border-[#d7b38c] bg-[#302820]" : "border-white/15 bg-white/[.03]"}`}><input type="radio" name="episode-access" value={bundle.id} checked={choice === bundle.id} onChange={() => setChoice(bundle.id)} className="size-4 accent-[#d7b38c]" /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{bundle.name}</span><span className="mt-1 block text-xs text-[#c8c2bc]">{bundle.items.length} included episodes · Includes this episode</span></span><strong className="text-lg">{money(bundle.pricePaise, bundle.currency)}</strong></label>)}
         </fieldset>}
-        {preview && phase === "choose" && preview.sufficient && choice === "episode" && <p className="flex items-center gap-2 text-xs text-[#c8c2bc]"><Check size={15} /> Wallet balance: {money(preview.balanceMinor, preview.currency)}</p>}
+        {preview && phase === "choose" && choice === "episode" && <p className="flex items-center gap-2 text-xs text-[#c8c2bc]"><Check size={15} /> Your credits: {formatCredits(preview.balanceMinor)}</p>}
         <div ref={stripeMount} hidden={phase !== "stripe" && phase !== "checkout"} />
         {error && <p role="alert" className="rounded-xl bg-[#472824] p-3 text-sm leading-relaxed text-[#ffd9d1]">{error}</p>}
         {notice && <p role="status" className="text-sm leading-relaxed text-[#c8c2bc]">{notice}</p>}
-        {phase === "choose" && <button onClick={() => void purchase()} className={primary}>{label}<ArrowRight size={16} /></button>}
+        {phase === "choose" && (choice === "episode" && preview && !preview.sufficient
+          ? <a href="/wallet" className={primary}>Buy credits<ArrowRight size={16} /></a>
+          : <button onClick={() => void purchase()} className={primary}>{label}<ArrowRight size={16} /></button>)}
         {phase === "stripe" && <button onClick={() => void payStripe()} className={primary}>Pay{savedCheckout?.amountPaise != null && savedCheckout.currency ? ` · ${money(savedCheckout.amountPaise, savedCheckout.currency)}` : " securely"}<ArrowRight size={16} /></button>}
         {phase === "pending" && <><p className="text-sm leading-relaxed text-[#c8c2bc]">Your checkout is saved{savedCheckout?.amountPaise != null && savedCheckout.currency ? ` · ${money(savedCheckout.amountPaise, savedCheckout.currency)}` : ""}. Check a payment you’ve made, or continue the same checkout.</p>{savedCheckout?.purchaseId && <button onClick={() => void checkPayment()} className={primary}>Check payment status</button>}<button onClick={() => void purchase()} className="min-h-12 w-full rounded-full border border-white/25 px-5 text-sm">Continue saved checkout</button></>}
         {phase === "error" && (token ? <button onClick={() => void refresh()} className={primary}>Try again</button> : <a href="/login" className={primary}>Sign in to continue</a>)}

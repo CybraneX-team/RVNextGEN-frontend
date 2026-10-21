@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import HomeEpisodeAccess from "./HomeEpisodeAccess";
 import type { Playback } from "@/lib/content";
+import { apiFetch } from "@/lib/client";
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
-import { GYRO_SERIES, SeriesArtwork } from "./GyroSeries";
+import { GYRO_SERIES, SeriesArtwork, seriesSlugs } from "./GyroSeries";
 import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
 
 function phase(value: number, start: number, end: number) {
@@ -13,7 +14,9 @@ function phase(value: number, start: number, end: number) {
   return t * t * (3 - 2 * t);
 }
 
-const EPISODES = [2, 3, 4, 5, 6, 7, 8];
+// Fallback grid shown only until the backend series loads (or if it can't be reached), so the home
+// never renders empty. Episode 01 is always the hero, so the grid starts at 02.
+const DEFAULT_EPISODES = [2, 3, 4, 5, 6, 7, 8];
 const EMPTY_EPISODES: number[] = [];
 
 function EpisodeCard({ episode, onOpen, seriesIndex }: { episode: number; onOpen: (selection: EpisodeSelection) => void; seriesIndex: number }) {
@@ -85,6 +88,25 @@ function EpisodePicker({ selected, episodes, onSelect, openBelow = false }: { se
 export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?: (visible: boolean) => void }) {
   const [seriesIndex, setSeriesIndex] = useState(0);
   const series = GYRO_SERIES[seriesIndex];
+  // The episode grid is driven by the backing series in the database, keyed by series index. The
+  // artwork and layout are unchanged; only how many episode cards appear (and which are premium)
+  // follows the real content. Episode 01 is the hero, so the grid lists episode numbers >= 2.
+  const [episodesBySeries, setEpisodesBySeries] = useState<Record<number, number[]>>({});
+  useEffect(() => {
+    const abort = new AbortController();
+    seriesSlugs.forEach((slug, index) => {
+      void apiFetch<{ episodes: { seasonNumber: number | null; episodeNumber: number | null }[] }>(`content/viewer-series/${encodeURIComponent(slug)}`, { signal: abort.signal })
+        .then(data => {
+          if (abort.signal.aborted) return;
+          // Home artwork currently represents season one, matching HomeEpisodeAccess.
+          const grid = [...new Set(data.episodes.filter(item => (item.seasonNumber ?? 1) === 1 && typeof item.episodeNumber === "number" && item.episodeNumber >= 2).map(item => item.episodeNumber as number))].sort((a, b) => a - b);
+          setEpisodesBySeries(previous => ({ ...previous, [index]: grid }));
+        })
+        .catch(() => { /* Keep the fallback grid when the series can't be loaded. */ });
+    });
+    return () => abort.abort();
+  }, []);
+  const EPISODES = episodesBySeries[seriesIndex] ?? DEFAULT_EPISODES;
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
   const wheelTime = useRef(0);
