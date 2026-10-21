@@ -5,6 +5,7 @@ import { Check, LockKeyhole, X, ArrowRight, ShieldCheck, LoaderCircle } from "lu
 import { useAuth } from "./AuthProvider";
 import { LiquidGlassButton } from "./LiquidGlassSurface";
 import { createPlayback, type Playback } from "@/lib/content";
+import { ApiError } from "@/lib/api";
 import { getDeviceId } from "@/lib/device";
 import { unlockEpisode, unlockPreview, walletRegion, type UnlockPreview, type WalletRegion } from "@/lib/wallet";
 import { beginCheckout, bundlesForSeries, mountEpisodeStripe, purchaseStatus, showEpisodeRazorpay, type EpisodeBundle, type PendingCheckout } from "@/lib/episode-payments";
@@ -115,6 +116,10 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
       }
       const current = pending.current!;
       const checkout = await beginCheckout(current, token);
+      if (checkout.status === "FAILED" && !checkout.providerOrderId) {
+        remember(null);
+        throw new Error("Checkout could not be created. No payment was taken through this checkout. Please try again.");
+      }
       if (checkout.entitled || checkout.status === "SUCCEEDED") { await play(); return; }
       const shownAmount = current.amountPaise ?? (current.kind === "episode" ? preview.priceMinor : bundles.find(bundle => bundle.id === current.targetId)?.pricePaise);
       const shownCurrency = current.currency ?? (current.kind === "episode" ? preview.currency : bundles.find(bundle => bundle.id === current.targetId)?.currency);
@@ -135,7 +140,9 @@ export default function EpisodePurchaseSheet({ episodeId, seriesId, title, onRea
       finally { if (live.current) { dialog.current?.close(); dialog.current?.showModal(); } }
       locked.current = false;
       if (live.current) await checkPayment();
-    } catch (e) { if (live.current) { setError(e instanceof Error ? e.message : "Could not open checkout. Please retry."); setPhase(pending.current ? "pending" : "choose"); } }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400 && !pending.current?.purchaseId) remember(null);
+      if (live.current) { setError(e instanceof Error ? e.message : "Could not open checkout. Please retry."); setPhase(pending.current ? "pending" : "choose"); } }
     finally { locked.current = false; }
   }
 
