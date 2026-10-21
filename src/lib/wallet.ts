@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { razorpayUpiOptions } from "./razorpay";
 
 // ---- Types ----
 export type WalletPack = { id: string; name: string; creditAmountMinor: number; pricePaise: number; currency: string };
@@ -71,6 +72,7 @@ async function openRazorpay(res: RazorpayCheckout & { walletPurchaseId: string }
       description: `Viewer wallet ${pack.currency} top-up`,
       prefill: { email: user.email },
       theme: { color: "#2f7d5b" },
+      ...razorpayUpiOptions(res.keyId),
       handler: (verification: RazorpayVerification) => {
         submitted = true;
         apiFetch<WalletPaymentStatus>(`wallet/purchases/${res.walletPurchaseId}/verify`, { method: "POST", body: verification, token }).then(resolve).catch(() => {

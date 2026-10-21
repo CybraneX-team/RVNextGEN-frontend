@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import HomeEpisodeAccess from "./HomeEpisodeAccess";
-import type { Playback } from "@/lib/content";
+import type { ApiContent, Playback } from "@/lib/content";
 import { apiFetch } from "@/lib/client";
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
@@ -91,22 +91,23 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   // The episode grid is driven by the backing series in the database, keyed by series index. The
   // artwork and layout are unchanged; only how many episode cards appear (and which are premium)
   // follows the real content. Episode 01 is the hero, so the grid lists episode numbers >= 2.
-  const [episodesBySeries, setEpisodesBySeries] = useState<Record<number, number[]>>({});
+  const [episodesBySeries, setEpisodesBySeries] = useState<Record<number, (ApiContent & { playable: boolean })[]>>({});
   useEffect(() => {
     const abort = new AbortController();
     seriesSlugs.forEach((slug, index) => {
-      void apiFetch<{ episodes: { seasonNumber: number | null; episodeNumber: number | null }[] }>(`content/viewer-series/${encodeURIComponent(slug)}`, { signal: abort.signal })
+      void apiFetch<{ episodes: (ApiContent & { playable: boolean })[] }>(`content/viewer-series/${encodeURIComponent(slug)}`, { signal: abort.signal })
         .then(data => {
           if (abort.signal.aborted) return;
           // Home artwork currently represents season one, matching HomeEpisodeAccess.
-          const grid = [...new Set(data.episodes.filter(item => (item.seasonNumber ?? 1) === 1 && typeof item.episodeNumber === "number" && item.episodeNumber >= 2).map(item => item.episodeNumber as number))].sort((a, b) => a - b);
-          setEpisodesBySeries(previous => ({ ...previous, [index]: grid }));
+          setEpisodesBySeries(previous => ({ ...previous, [index]: data.episodes }));
         })
         .catch(() => { /* Keep the fallback grid when the series can't be loaded. */ });
     });
     return () => abort.abort();
   }, []);
-  const EPISODES = episodesBySeries[seriesIndex] ?? DEFAULT_EPISODES;
+  const EPISODES = episodesBySeries[seriesIndex]
+    ? [...new Set(episodesBySeries[seriesIndex].filter(item => (item.seasonNumber ?? 1) === 1 && typeof item.episodeNumber === "number" && item.episodeNumber >= 2).map(item => item.episodeNumber as number))].sort((a, b) => a - b)
+    : DEFAULT_EPISODES;
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
   const wheelTime = useRef(0);
@@ -168,7 +169,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
       try { localStorage.setItem(series.historyKey, JSON.stringify(next)); } catch { /* Keep session history. */ }
     }
     setPlaying(null);
-  }, [playing, recentEpisodes, series]);
+  }, [playing, recentEpisodes, series, setHistory, setPlaying]);
   const scroller = useRef<HTMLDivElement>(null);
   const episodeCarousel = useRef<HTMLDivElement>(null);
   const recentCarousel = useRef<HTMLDivElement>(null);
@@ -551,7 +552,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
         </div>
       </div>
     </div>
-    {requestedEpisode && <HomeEpisodeAccess seriesIndex={seriesIndex} episode={requestedEpisode.episode} onClose={() => requestPlay(null)} onReady={playback => { setResolvedPlayback(playback); setPlaying(requestedEpisode); requestPlay(null); }} />}
+    {requestedEpisode && <HomeEpisodeAccess key={`${seriesIndex}:${requestedEpisode.episode}`} seriesIndex={seriesIndex} episode={requestedEpisode.episode} catalog={episodesBySeries[seriesIndex]} onClose={() => requestPlay(null)} onReady={playback => { setResolvedPlayback(playback); setPlaying(requestedEpisode); requestPlay(null); }} />}
     {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} videoId={resolvedPlayback && "youtubeId" in resolvedPlayback ? resolvedPlayback.youtubeId : undefined} streamUrl={resolvedPlayback && !("youtubeId" in resolvedPlayback) ? resolvedPlayback.playerUrl : undefined} onClose={closePlayer} />}
   </div>;
 }

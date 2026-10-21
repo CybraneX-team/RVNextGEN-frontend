@@ -1,5 +1,6 @@
 import { apiFetch } from "./client";
 import { loadGatewayScript, type Gateway } from "./wallet";
+import { razorpayUpiOptions } from "./razorpay";
 
 export type EpisodeBundle = { id: string; name: string; pricePaise: number; currency: string; items: { episodeId: string; isFree: boolean }[] };
 export type PurchaseKind = "episode" | "package";
@@ -15,9 +16,11 @@ export const beginCheckout = (pending: PendingCheckout, token: string) => apiFet
 export async function showEpisodeRazorpay(checkout: Checkout, email: string, title: string) {
   await loadGatewayScript("https://checkout.razorpay.com/v1/checkout.js");
   if (!window.Razorpay || !checkout.keyId || !checkout.providerOrderId) throw new Error("Payment checkout is unavailable. Please try again.");
+  const upiOptions = razorpayUpiOptions(checkout.keyId);
   return new Promise<void>((resolve, reject) => {
     const gateway = new window.Razorpay!({ key: checkout.keyId, order_id: checkout.providerOrderId, amount: checkout.amountPaise, currency: checkout.currency,
       name: "RVNext Gen", description: title, prefill: { email }, theme: { color: "#24211e" },
+      ...upiOptions,
       handler: () => resolve(), modal: { ondismiss: () => reject(new Error("Checkout closed. Your episode is saved here; you can continue whenever you’re ready.")) },
     });
     gateway.open();

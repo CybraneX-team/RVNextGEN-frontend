@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { razorpayUpiOptions } from "./razorpay";
 
 // ---- Types ----
 /** A Creator Lab credit pack, priced in the viewer's regional currency. `creditCount` is universal. */
@@ -64,6 +65,7 @@ async function openRazorpay(res: RazorpayCheckout, pack: CreditPack, user: { ema
       description: `${pack.creditCount.toLocaleString()} credits`,
       prefill: { email: user.email },
       theme: { color: "#e5b27f" },
+      ...razorpayUpiOptions(res.keyId),
       handler: () => resolve(),
       modal: { ondismiss: () => reject(new Error("Payment cancelled")) },
     });
