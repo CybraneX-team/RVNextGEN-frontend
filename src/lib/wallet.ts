@@ -24,13 +24,20 @@ const walletCheckout = (walletPackId: string, provider: Gateway, idempotencyKey:
   apiFetch<CheckoutResponse>("wallet/checkout", { method: "POST", body: { walletPackId, provider }, token, headers: { "idempotency-key": idempotencyKey } });
 
 // ---- Gateway helpers ----
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) return resolve();
-    const s = document.createElement("script");
-    s.src = src; s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.body.appendChild(s);
+const gatewayScripts = new Map<string, Promise<void>>();
+export function loadGatewayScript(src: string): Promise<void> {
+  const existing = gatewayScripts.get(src);
+  if (existing) return existing;
+  const promise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    const timeout = window.setTimeout(() => { script.remove(); gatewayScripts.delete(src); reject(new Error("Payment checkout took too long to load. Please retry.")); }, 20000);
+    script.src = src; script.async = true;
+    script.onload = () => { window.clearTimeout(timeout); resolve(); };
+    script.onerror = () => { window.clearTimeout(timeout); script.remove(); gatewayScripts.delete(src); reject(new Error("Could not load payment checkout. Check your connection and retry.")); };
+    document.body.appendChild(script);
   });
+  gatewayScripts.set(src, promise);
+  return promise;
 }
 
 /**
@@ -45,17 +52,10 @@ export async function startTopUp(pack: WalletPack, provider: Gateway, token: str
   return openStripe(res as StripeCheckout & CheckoutResponse);
 }
 
-declare global {
-  interface Window { Razorpay?: new (options: Record<string, unknown>) => { open: () => void }; Stripe?: (key: string) => StripeInstance }
-}
-type StripeInstance = {
-  elements: (opts: { clientSecret: string; appearance?: Record<string, unknown> }) => StripeElements;
-  confirmPayment: (opts: { elements: StripeElements; redirect: "if_required" }) => Promise<{ error?: { message?: string } }>;
-};
-type StripeElements = { create: (type: string) => { mount: (sel: string | HTMLElement) => void }; submit?: () => Promise<{ error?: { message?: string } }> };
+
 
 async function openRazorpay(res: RazorpayCheckout, pack: WalletPack, user: { email: string }): Promise<void> {
-  await loadScript("https://checkout.razorpay.com/v1/checkout.js");
+  await loadGatewayScript("https://checkout.razorpay.com/v1/checkout.js");
   if (!window.Razorpay) throw new Error("Could not load Razorpay.");
   return new Promise((resolve, reject) => {
     const rzp = new window.Razorpay!({
@@ -76,7 +76,7 @@ async function openRazorpay(res: RazorpayCheckout, pack: WalletPack, user: { ema
 
 // Stripe uses a Payment Element mounted into a modal the caller renders (#stripe-payment-element).
 async function openStripe(res: StripeCheckout): Promise<void> {
-  await loadScript("https://js.stripe.com/v3/");
+  await loadGatewayScript("https://js.stripe.com/v3/");
   if (!window.Stripe) throw new Error("Could not load Stripe.");
   const stripe = window.Stripe(res.publishableKey);
   const elements = stripe.elements({ clientSecret: res.clientSecret, appearance: { theme: "night" } as Record<string, unknown> });
@@ -85,7 +85,7 @@ async function openStripe(res: StripeCheckout): Promise<void> {
   elements.create("payment").mount(container);
   // The caller shows a "Pay" button that calls confirmStripe(); here we expose the confirm closure.
   stripePendingConfirm = async () => {
-    const { error } = await stripe.confirmPayment({ elements, redirect: "if_required" });
+    const { error } = await stripe.confirmPayment({ elements, redirect: "if_required", confirmParams: { return_url: window.location.href } });
     if (error) throw new Error(error.message ?? "Payment failed");
   };
 }

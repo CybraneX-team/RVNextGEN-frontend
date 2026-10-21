@@ -13,6 +13,8 @@ const GOOGLE_ERRORS: Record<string, string> = {
   google_denied: "Google sign-in was cancelled.",
   google_unverified: "That Google account has no verified email, so it can’t be used to sign in.",
   google_unavailable: "Google sign-in isn’t available right now.",
+  google_service_unavailable: "Sign-in is temporarily unavailable because the account service cannot connect. Please try again shortly.",
+  google_session_expired: "Your Google sign-in session expired. Start again from this page and use the same browser tab.",
   google_failed: "Google sign-in failed. Please try again.",
 };
 

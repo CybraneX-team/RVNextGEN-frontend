@@ -1,18 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 import { ChevronRightIcon, GyroIcon, HomeIcon, LibraryIcon, PlayIcon, SearchIcon } from "./icons";
 import GyroPage from "./GyroPage";
 import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
-import { getDeviceId } from "@/lib/device";
-import { unlockPreview, unlockEpisode } from "@/lib/wallet";
+import EpisodePurchaseSheet from "./EpisodePurchaseSheet";
 import { trackEvent, watchBeacon, attachStreamTelemetry } from "@/lib/analytics";
-import { formatMoney } from "@/lib/money";
 import { loadYouTubeApi, type YouTubePlayer } from "./EpisodeExpansion";
 import {
-  addToWatchlist, createPlayback, discover, getContent, getFeatured, getTaxonomy,
+  addToWatchlist, discover, getContent, getFeatured, getTaxonomy,
   getWatchlist, removeFromWatchlist, type ApiContent,
 } from "@/lib/content";
 
@@ -35,7 +33,7 @@ function closeMovie() {
   }
 }
 
-type Film = { id: string; title: string; genre: string; genres: string[]; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean };
+type Film = { id: string; title: string; genre: string; genres: string[]; year: string; rating: string; image: string; tagline: string; description: string; real?: boolean; seriesId?: string | null };
 const GENRE_BY_TYPE: Record<string, string> = { MOVIE: "Movie", SERIES: "Series", EPISODE: "Episode", SHORT: "Short" };
 // These shipped poster files are intentionally used ahead of database URLs so the catalogue
 // remains visible to every visitor, including when the API is running on a different host.
@@ -59,6 +57,7 @@ function toFilm(c: ApiContent): Film {
   const fallbackGenre = GENRE_BY_TYPE[c.type] ?? "Movie";
   return {
     id: c.id,
+    seriesId: c.seriesId,
     title: c.title,
     // Keep the first genre for backward-compatible headings, but retain the
     // complete selection for filters and the title detail screen.
@@ -182,19 +181,9 @@ const seriesSeasons: Record<string, number[]> = {
 
 /** Plays a title: YouTube embed or Cloudflare iframe, resolved via the backend playback endpoint.
  * Premium episodes are gated by the Viewer Wallet: locked ones show an unlock prompt before playback. */
-function PlayerModal({ id, title, token, onClose }: { id: string; title: string; token: string | null; onClose: () => void }) {
-  type Gate = { priceMinor: number; currency: string; balanceMinor: number; sufficient: boolean; quoteId: string };
-  const [state, setState] = useState<{ status: "loading" } | { status: "ready"; url: string; cloudflare: boolean } | { status: "error"; message: string } | { status: "locked"; gate: Gate }>({ status: "loading" });
-  const [unlocking, setUnlocking] = useState(false);
+function PlayerModal({ id, title, seriesId, token, onClose }: { id: string; title: string; seriesId?: string | null; token: string | null; onClose: () => void }) {
+  const [state, setState] = useState<{ status: "gate" } | { status: "ready"; url: string; cloudflare: boolean }>({ status: "gate" });
   const playerFrame = useRef<HTMLIFrameElement>(null);
-
-  const resolvePlayback = useCallback(async () => {
-    const pb = await createPlayback(id, token!, getDeviceId());
-    const cloudflare = !("embedUrl" in pb);
-    const url = "embedUrl" in pb ? new URL(pb.embedUrl) : null;
-    if (url) { url.searchParams.set('enablejsapi', '1'); url.searchParams.set('origin', window.location.origin); }
-    setState({ status: "ready", url: url?.toString() ?? pb.playerUrl, cloudflare });
-  }, [id, token]);
 
   // Attach Cloudflare Stream telemetry (START/PROGRESS/COMPLETE with positions) once the iframe is mounted.
   useEffect(() => {
@@ -230,56 +219,23 @@ function PlayerModal({ id, title, token, onClose }: { id: string; title: string;
   }, [state, id, token]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- surface the no-token case before fetching
-    if (!token) { setState({ status: "error", message: "Please sign in to watch." }); return; }
-    let live = true;
-    (async () => {
-      try {
-        const preview = await unlockPreview(id, token);
-        if (!live) return;
-        if (!preview.alreadyUnlocked) { setState({ status: "locked", gate: { priceMinor: preview.priceMinor, currency: preview.currency, balanceMinor: preview.balanceMinor, sufficient: preview.sufficient, quoteId: preview.quoteId! } }); return; }
-        await resolvePlayback();
-      } catch (e) { if (live) setState({ status: "error", message: e instanceof Error ? e.message : "This title can’t be played right now." }); }
-    })();
-    return () => { live = false; };
-  }, [id, token, resolvePlayback]);
-
-  useEffect(() => {
+    if (state.status !== "ready") return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, state.status]);
 
-  async function confirmUnlock() {
-    if (!token) return;
-    setUnlocking(true);
-    try { if (state.status !== "locked") return; await unlockEpisode(id, state.gate.quoteId, token); setState({ status: "loading" }); await resolvePlayback(); }
-    catch (e) { setState({ status: "error", message: e instanceof Error ? e.message : "Could not unlock this episode." }); }
-    finally { setUnlocking(false); }
-  }
+  if (state.status === "gate") return <EpisodePurchaseSheet episodeId={id} seriesId={seriesId} title={title} onClose={onClose} onReady={pb => {
+    const url = "embedUrl" in pb ? new URL(pb.embedUrl) : null;
+    if (url) { url.searchParams.set("enablejsapi", "1"); url.searchParams.set("origin", window.location.origin); }
+    setState({ status: "ready", url: url?.toString() ?? pb.playerUrl, cloudflare: !("embedUrl" in pb) });
+  }} />;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={`Playing ${title}`} onClick={onClose}>
       <div className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl bg-black" onClick={(e) => e.stopPropagation()}>
         <LiquidGlassButton onClick={onClose} aria-label="Close player" wrapperClassName="absolute top-2 right-2 z-10" className="grid size-11 place-items-center rounded-full text-[18px] text-white">✕</LiquidGlassButton>
-        {state.status === "loading" ? <div className="grid size-full place-items-center text-white/60">Loading…</div>
-          : state.status === "error" ? <div className="grid size-full place-items-center px-6 text-center text-[13px] text-[#ff8f8f]">{state.message}</div>
-          : state.status === "locked" ? (
-            <div className="grid size-full place-items-center px-6 text-center">
-              <div className="max-w-sm">
-                <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[#9fe0bd]/70">Premium episode</p>
-                <h3 className="mt-2 text-[20px] font-semibold text-white">Unlock “{title}”</h3>
-                <p className="mt-2 text-[14px] text-white/60">Costs <span className="font-semibold text-white">{formatMoney(state.gate.priceMinor, state.gate.currency)}</span>. Your balance: {formatMoney(state.gate.balanceMinor, state.gate.currency)}.</p>
-                <p className="mt-2 text-[12px] text-white/50">One purchase gives you access for one year.</p>
-                {state.gate.sufficient ? (
-                  <button onClick={() => void confirmUnlock()} disabled={unlocking} className="mt-5 h-11 rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f] disabled:opacity-50">{unlocking ? "Unlocking…" : `Unlock for one year (${formatMoney(state.gate.priceMinor, state.gate.currency)})`}</button>
-                ) : (
-                  <div className="mt-5"><p className="mb-3 text-[13px] text-[#ffb27f]">Not enough wallet balance.</p><Link href="/wallet" className="inline-flex h-11 items-center rounded-lg bg-[#2f7d5b] px-6 text-[14px] font-semibold text-white hover:bg-[#2a704f]">Add funds</Link></div>
-                )}
-              </div>
-            </div>
-          )
-          : <iframe ref={playerFrame} src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />}
+        <iframe ref={playerFrame} src={state.url} className="size-full border-0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen title={title} />
       </div>
     </div>
   );
@@ -382,7 +338,7 @@ function MovieDetail({ film, pool, saved, onSave, onSelect, onNavigate, token }:
   const explore = [...recommendations].reverse().slice(0, 6);
   const cast = castByFilm[film.id];
   return <main className="relative isolate min-h-screen overflow-hidden bg-[#0e0d0f] pb-1 text-white">
-    {playing && <PlayerModal id={film.id} title={film.title} token={token} onClose={() => setPlaying(false)} />}
+    {playing && <PlayerModal seriesId={film.seriesId} id={film.id} title={film.title} token={token} onClose={() => setPlaying(false)} />}
     <section className="relative mx-auto max-w-[1440px]">
       <div aria-hidden="true" className={`absolute inset-x-0 top-0 overflow-hidden lg:left-[34%] lg:h-[660px] ${isSeries ? "h-[370px]" : "h-[520px]"}`}>
         {isSeries ? <div className="size-full bg-cover bg-center" style={{ backgroundImage: `url("${film.image}"), url("/art/${film.id}.svg")` }} /> : <Art film={film} detail />}

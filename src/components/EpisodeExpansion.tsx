@@ -58,15 +58,11 @@ function timeLabel(seconds: number) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
 
-/** Keep the original scene mounted while the selected card fills the viewport. */
-export default function EpisodeExpansion({ selection, seriesTitle, videoId, onClose }: { selection: EpisodeSelection; seriesTitle: string; videoId?: string; onClose: () => void }) {
+/** Show the player immediately while keeping the original scene mounted behind it. */
+export default function EpisodeExpansion({ selection, seriesTitle, videoId, streamUrl, onClose }: { selection: EpisodeSelection; seriesTitle: string; videoId?: string; streamUrl?: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const artwork = useRef<HTMLDivElement>(null);
-  const backdrop = useRef<HTMLDivElement>(null);
-  const shade = useRef<HTMLDivElement>(null);
-  const controls = useRef<HTMLDivElement>(null);
   const playerMount = useRef<HTMLDivElement>(null);
-  const playerWrap = useRef<HTMLDivElement>(null);
   const player = useRef<YouTubePlayer | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -74,13 +70,12 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playerError, setPlayerError] = useState("");
-  const [opened, setOpened] = useState(false);
   const closing = useRef(false);
   const dismiss = useRef<() => void>(() => {});
 
   useEffect(() => {
-    // Load the embed only after the card has finished opening so it can't stall the animation.
-    if (!videoId || !opened || !playerMount.current) return;
+    // Mount the embed as soon as the dialog is open.
+    if (!videoId || !playerMount.current) return;
     let live = true;
     let instance: YouTubePlayer | null = null;
     void loadYouTubeApi().then(() => {
@@ -115,7 +110,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
       player.current = null;
       instance = null;
     };
-  }, [videoId, opened]);
+  }, [videoId]);
 
   useEffect(() => {
     if (!playing) return;
@@ -131,14 +126,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
   useEffect(() => {
     const modal = dialog.current!;
     const cover = artwork.current!;
-    const ui = controls.current!;
-    const background = backdrop.current!;
-    const tint = shade.current!;
-    const video = playerWrap.current;
-    let disposed = false;
     const { origin } = selection;
-    const bounds = origin.getBoundingClientRect();
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const previousFocus = document.activeElement as HTMLElement | null;
     closing.current = false;
     const clone = origin.cloneNode(true) as HTMLElement;
@@ -146,64 +134,21 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
     clone.removeAttribute("id");
     clone.removeAttribute("aria-label");
     clone.setAttribute("aria-hidden", "true");
-    clone.style.cssText += `;width:${origin.offsetWidth}px;height:${origin.offsetHeight}px;position:absolute;inset:0;margin:0;transform:none;scale:1;border-radius:0;`;
+    clone.querySelectorAll("h1,h2,h3,p,span").forEach(node => {
+      if (node.textContent?.trim()) (node as HTMLElement).style.visibility = "hidden";
+    });
+    clone.style.cssText += `;width:${origin.offsetWidth}px;height:${origin.offsetHeight}px;position:absolute;inset:0;margin:0;transform-origin:top left;transform:scale(${window.innerWidth / origin.offsetWidth},${window.innerHeight / origin.offsetHeight});border-radius:0;`;
     cover.prepend(clone);
-    const hideOriginal = origin.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 0, fill: "forwards" });
     modal.showModal();
-    // Animate only compositor-friendly properties (transform, clip-path, opacity): the
-    // cover stays full-viewport so the video iframe is never re-laid-out mid-flight.
-    const clip = (rect: { left: number; top: number; width: number; height: number }, radius: number) =>
-      `inset(${rect.top}px ${window.innerWidth - rect.left - rect.width}px ${window.innerHeight - rect.top - rect.height}px ${rect.left}px round ${radius}px)`;
-    const fullClip = clip({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, 0);
-    const radiusFor = (destination: DOMRect) => parseFloat(getComputedStyle(origin).borderTopLeftRadius) * destination.width / origin.offsetWidth;
-    const smallTransform = (destination: DOMRect) => `translate(${destination.left}px,${destination.top}px) scale(${destination.width / origin.offsetWidth},${destination.height / origin.offsetHeight})`;
-    const largeTransform = `translate(0px,0px) scale(${window.innerWidth / origin.offsetWidth},${window.innerHeight / origin.offsetHeight})`;
-    cover.style.clipPath = clip(bounds, radiusFor(bounds));
-    clone.style.transform = smallTransform(bounds);
-    clone.style.willChange = "transform";
-    const animate = async (reverse: boolean) => {
-      const destination = reverse ? origin.getBoundingClientRect() : bounds;
-      const duration = reduced ? 0 : reverse ? 520 : 720;
-      const options: KeyframeAnimationOptions = { duration, easing: "cubic-bezier(.32,.72,0,1)", fill: "forwards" };
-      // Read the live frame before cancelling so an early close reverses smoothly.
-      const coverStart = reverse ? getComputedStyle(cover).clipPath : clip(bounds, radiusFor(bounds));
-      const cloneStart = reverse ? getComputedStyle(clone).transform : smallTransform(bounds);
-      const backgroundStart = getComputedStyle(background).backgroundColor;
-      const tintStart = getComputedStyle(tint).opacity;
-      const controlsStart = getComputedStyle(ui).opacity;
-      [cover, clone, background, tint, ui].forEach(node => node.getAnimations().forEach(animation => animation.cancel()));
-      const animations = [
-        cover.animate([{ clipPath: coverStart }, { clipPath: reverse ? clip(destination, radiusFor(destination)) : fullClip }], options),
-        clone.animate([{ transform: cloneStart }, { transform: reverse ? smallTransform(destination) : largeTransform }], options),
-        background.animate([{ backgroundColor: backgroundStart }, { backgroundColor: reverse ? "rgba(0,0,0,0)" : "rgba(0,0,0,.7)" }], options),
-        tint.animate([{ opacity: tintStart }, { opacity: reverse ? 0 : .4 }], options),
-        ui.animate([{ opacity: controlsStart }, { opacity: reverse ? 0 : 1 }], { ...options, duration: reduced ? 0 : reverse ? 300 : 450, delay: reduced || reverse ? 0 : 280 }),
-      ];
-      await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
-    };
     dismiss.current = () => {
       if (closing.current) return;
       closing.current = true;
       player.current?.pauseVideo();
-      // The full-screen video leaves first so it never shows cropped while the card shrinks.
-      const videoOut = video && !reduced ? video.animate([{ opacity: getComputedStyle(video).opacity }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" }).finished.catch(() => {}) : Promise.resolve();
-      void videoOut.then(() => animate(true)).then(() => {
-        if (disposed) return;
-        hideOriginal.cancel();
-        modal.close();
-        onClose();
-        previousFocus?.focus({ preventScroll: true });
-      });
+      modal.close();
+      onClose();
+      previousFocus?.focus({ preventScroll: true });
     };
-    void animate(false).then(() => {
-      if (disposed) return;
-      setOpened(true);
-      video?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: reduced ? 0 : 350, easing: "ease-out", fill: "forwards" });
-    });
     return () => {
-      disposed = true;
-      hideOriginal.cancel();
-      [cover, clone, background, tint, ui, ...(video ? [video] : [])].forEach(node => node.getAnimations().forEach(animation => animation.cancel()));
       clone.remove();
       modal.close();
     };
@@ -219,18 +164,19 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
   }
 
   return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onCancel={event => { event.preventDefault(); dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
-    <div ref={backdrop} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-transparent backdrop-blur-none" />
-    <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#302116] will-change-[clip-path] [&>*]:origin-top-left">
-      <div ref={shade} className="absolute inset-0 z-[1] bg-black opacity-0" />
-      {videoId && <div ref={playerWrap} className="absolute inset-0 z-[2] opacity-0"><div ref={playerMount} className="absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0" /></div>}
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-black/70" />
+    <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#302116] [&>*]:origin-top-left">
+      <div className="absolute inset-0 z-[1] bg-black/40" />
+      {videoId && <div className="absolute inset-0 z-[2]"><div ref={playerMount} className="absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0" /></div>}
     </div>
-    <div ref={controls} className="absolute inset-0 z-20 opacity-0">
+    {streamUrl && <iframe src={streamUrl} title={seriesTitle} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="absolute inset-0 z-10 size-full border-0" />}
+    <div className={`absolute inset-0 z-20 ${streamUrl ? "pointer-events-none" : ""}`}>
       <div className="pointer-events-auto absolute top-[max(16px,env(safe-area-inset-top))] left-4"><LiquidGlassButton type="button" autoFocus onClick={() => dismiss.current()} aria-label="Close video and return to episodes" title="Back to episodes" className="grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
         <svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m14 6-6 6 6 6" /></svg>
       </LiquidGlassButton></div>
       {playerError && <p role="alert" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">{playerError}</p>}
       {videoId && !playerReady && !playerError && <p role="status" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">Loading video…</p>}
-      {!playerError && <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-[clamp(12px,5vw,52px)] px-4">
+      {!streamUrl && !playerError && <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-[clamp(12px,5vw,52px)] px-4">
         <LiquidGlassButton type="button" onClick={() => skipBy(-10)} disabled={!playerReady} aria-label="Rewind 10 seconds" className="grid size-[58px] place-items-center rounded-full text-white disabled:opacity-40 sm:size-[62px]">
           <svg aria-hidden="true" className="size-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none">10</text></svg>
         </LiquidGlassButton>
@@ -241,7 +187,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
           <svg aria-hidden="true" className="size-8 -scale-x-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none" transform="translate(24 0) scale(-1 1)">10</text></svg>
         </LiquidGlassButton>
       </div>}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-6 pt-20 pb-[max(24px,env(safe-area-inset-bottom))] sm:px-10">
+      {!streamUrl && <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-6 pt-20 pb-[max(24px,env(safe-area-inset-bottom))] sm:px-10">
         <div className="mb-4 flex items-end justify-between gap-4"><div><p className="text-sm text-white/75">{seriesTitle}</p><h2 className="text-xl font-bold">Episode {String(selection.episode).padStart(2, "0")}</h2></div>
           <LiquidGlassButton type="button" disabled={!playerReady} onClick={() => { if (muted) { player.current?.unMute(); player.current?.setVolume(100); } else player.current?.mute(); setMuted(!muted); }} aria-label={muted ? "Unmute" : "Mute"} className="grid size-11 shrink-0 place-items-center rounded-full text-white disabled:opacity-40"><svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></svg></LiquidGlassButton>
         </div>
@@ -250,7 +196,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, onCl
         </LiquidGlassSurface>
         <p className="mt-2 text-right text-xs tabular-nums text-white/85">{videoId ? `${timeLabel(position)} / ${timeLabel(duration)}` : "--:-- / --:--"}</p>
         {!videoId && <p role="status" className="mt-2 text-center text-sm text-white/75">Video coming soon</p>}
-      </div>
+      </div>}
     </div>
   </dialog>;
 }

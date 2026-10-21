@@ -44,11 +44,12 @@ export async function startCreditPurchase(pack: CreditPack, provider: Gateway, t
 declare global {
   interface Window { Razorpay?: new (options: Record<string, unknown>) => { open: () => void }; Stripe?: (key: string) => StripeInstance }
 }
-type StripeInstance = {
+export type StripeElement = { mount: (sel: string | HTMLElement) => void; destroy?: () => void };
+export type StripeElements = { create: (type: string) => StripeElement; submit?: () => Promise<{ error?: { message?: string } }> };
+export type StripeInstance = {
   elements: (opts: { clientSecret: string; appearance?: Record<string, unknown> }) => StripeElements;
-  confirmPayment: (opts: { elements: StripeElements; redirect: "if_required" }) => Promise<{ error?: { message?: string } }>;
+  confirmPayment: (opts: { elements: StripeElements; redirect: "if_required"; confirmParams?: { return_url: string } }) => Promise<{ error?: { message?: string } }>;
 };
-type StripeElements = { create: (type: string) => { mount: (sel: string | HTMLElement) => void }; submit?: () => Promise<{ error?: { message?: string } }> };
 
 async function openRazorpay(res: RazorpayCheckout, pack: CreditPack, user: { email: string }): Promise<void> {
   await loadScript("https://checkout.razorpay.com/v1/checkout.js");

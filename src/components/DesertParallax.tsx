@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import HomeEpisodeAccess from "./HomeEpisodeAccess";
+import type { Playback } from "@/lib/content";
 import { PlayIcon } from "./icons";
 import EpisodeExpansion, { type EpisodeSelection } from "./EpisodeExpansion";
 import { GYRO_SERIES, SeriesArtwork } from "./GyroSeries";
@@ -89,6 +91,26 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const featuredCard = useRef<HTMLElement>(null);
   const heroCard = useRef<HTMLButtonElement>(null);
   const desktopStages = useRef<number[]>([0, 3]);
+  const [requestedEpisode, requestPlay] = useState<EpisodeSelection | null>(null);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("resumePurchase") !== "1") return;
+    const frame = requestAnimationFrame(() => {
+      try {
+        const context = JSON.parse(sessionStorage.getItem("rv-home-payment-context") ?? "null");
+        const origin = featuredCard.current ?? heroCard.current;
+        if (origin && context && [0, 1].includes(context.seriesIndex) && Number.isInteger(context.episode) && context.episode >= 1 && context.episode <= 8) {
+          setSeriesIndex(context.seriesIndex);
+          requestPlay({ episode: context.episode, origin });
+          url.searchParams.delete("resumePurchase");
+          url.searchParams.delete("payment_intent"); url.searchParams.delete("payment_intent_client_secret"); url.searchParams.delete("redirect_status");
+          window.history.replaceState(window.history.state, "", url);
+        }
+      } catch { /* The original card can always be opened again. */ }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  const [resolvedPlayback, setResolvedPlayback] = useState<Playback | null>(null);
   const [playing, setPlaying] = useState<EpisodeSelection | null>(null);
   const [history, setHistory] = useState<Record<string, number[]>>({});
   const [visibleHistory, setVisibleHistory] = useState<Record<string, number[]>>({});
@@ -117,7 +139,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   }, []);
   const closePlayer = useCallback(() => {
     if (playing) {
-      // Until real playback exists, opening an episode records a demo watch.
+      // Only resolved, entitled playback reaches this state.
       // Record history now; the visible carousel refreshes only once offscreen.
       const next = [playing.episode, ...recentEpisodes.filter(episode => episode !== playing.episode)];
       setHistory(previous => ({ ...previous, [series.id]: next }));
@@ -130,6 +152,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
   const recentCarousel = useRef<HTMLDivElement>(null);
   const upcomingSection = useRef<HTMLDivElement>(null);
   const recentlyWatchedSection = useRef<HTMLElement>(null);
+  const episodeLists = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState(1);
@@ -263,6 +286,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
         next = target;
       }
       if (next === current) return;
+      if (desktop.matches && current === 0 && next === 3) episodeLists.current?.scrollTo({ top: 0, behavior: "instant" });
       current = next;
       setStage(next);
       lockedUntil = performance.now() + (preference.matches ? 0 : 720);
@@ -284,10 +308,12 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
       const now = performance.now();
       const fresh = now - lastWheel > 180;
       lastWheel = now;
+      if (fresh) { wheelAmount = 0; wheelConsumed = false; }
+      // A single trackpad gesture can keep emitting wheel events after the stage changes.
+      // Consume its momentum before the newly revealed episode list is allowed to scroll.
+      if (now < lockedUntil || wheelConsumed) { event.preventDefault(); wheelConsumed = true; return; }
       if (canScrollInside(event.target, Math.sign(event.deltaY))) return;
       event.preventDefault();
-      if (fresh) { wheelAmount = 0; wheelConsumed = false; }
-      if (now < lockedUntil || wheelConsumed) { wheelConsumed = true; return; }
       wheelAmount += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1);
       if (Math.abs(wheelAmount) >= 18) {
         wheelConsumed = true;
@@ -303,7 +329,9 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
       if (!touch || !point || event.touches.length !== 1 || isControl(event.target)) return;
       const dx = touch.x - point.clientX;
       const dy = touch.y - point.clientY;
-      if (Math.abs(dx) >= Math.abs(dy) || canScrollInside(event.target, Math.sign(dy))) return;
+      if (Math.abs(dx) >= Math.abs(dy)) return;
+      if (touch.consumed || performance.now() < lockedUntil) { event.preventDefault(); return; }
+      if (canScrollInside(event.target, Math.sign(dy))) return;
       event.preventDefault();
       if (!touch.consumed && Math.abs(dy) >= 30) {
         touch.consumed = true;
@@ -420,7 +448,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
               <h1 className="text-[22px] font-bold tracking-[-.04em] text-white sm:text-[30px]">Episode 01</h1>
               <LiquidGlassSurface aria-hidden="true" className="shrink-0 rounded-full"><span className="grid size-[40px] place-items-center rounded-full"><PlayIcon className="size-[14px]" /></span></LiquidGlassSurface>
             </div>
-            {card >= .999 && <button type="button" aria-label={index === seriesIndex ? `Play ${entry.title} Episode 01` : `View series ${index + 1}: ${entry.title}`} onClick={() => { if (index !== seriesIndex) selectSeries(index); else if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
+            {card >= .999 && <button type="button" aria-label={index === seriesIndex ? `Play ${entry.title} Episode 01` : `View series ${index + 1}: ${entry.title}`} onClick={() => { if (index !== seriesIndex) selectSeries(index); else if (featuredCard.current) requestPlay({ episode: 1, origin: featuredCard.current }); }} className="absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white" />}
           </article>)}
             </div>
           <div aria-hidden={!canSwipeSeries} inert={!canSwipeSeries} className="absolute inset-x-0 top-full mt-5 flex items-center justify-center gap-3 text-[12px] text-white/60 transition-opacity duration-300" style={{ opacity: canSwipeSeries ? 1 : 0 }}>
@@ -435,21 +463,26 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
             <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex - 1)} disabled={seriesIndex === 0} aria-label="Previous series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">‹</span></LiquidGlassButton>
             <LiquidGlassButton type="button" onClick={() => selectSeries(seriesIndex + 1)} disabled={seriesIndex === GYRO_SERIES.length - 1} aria-label="Next series" className="grid size-12 place-items-center rounded-full text-white disabled:opacity-35"><span aria-hidden="true" className="text-2xl leading-none">›</span></LiquidGlassButton>
           </nav>}
-          <button ref={heroCard} type="button" aria-label={`Play ${series.title} Episode 01`} aria-hidden={stage !== 0} tabIndex={stage === 0 ? 0 : -1} onClick={() => { if (heroCard.current) setPlaying({ episode: 1, origin: heroCard.current }); }} className="group absolute top-[35dvh] right-[clamp(40px,8vw,160px)] z-[6] hidden aspect-[9/16] h-[min(54dvh,600px)] overflow-hidden rounded-3xl border border-white/15 bg-[#53331f] text-left shadow-[0_40px_120px_#0009] transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white motion-reduce:transition-none lg:block" style={{ opacity: stage === 0 && !playing ? 1 : 0, transform: stage === 0 ? "none" : "translateY(24px)", pointerEvents: stage === 0 ? "auto" : "none" }}>
-            <SeriesArtwork index={seriesIndex} />
-            <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" />
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-7 py-6">
-              <span className="text-[30px] font-bold tracking-[-.04em] text-white">Episode 01</span>
-              <LiquidGlassSurface aria-hidden="true" className="shrink-0 rounded-full"><span className="grid size-[40px] place-items-center rounded-full"><PlayIcon className="size-[14px]" /></span></LiquidGlassSurface>
-            </span>
+          <button ref={heroCard} type="button" aria-label={`Play ${series.title} Episode 01`} aria-hidden={stage !== 0} tabIndex={stage === 0 ? 0 : -1} onClick={() => { if (heroCard.current) requestPlay({ episode: 1, origin: heroCard.current }); }} className="group absolute top-[35dvh] right-[clamp(40px,8vw,160px)] z-[6] hidden aspect-[9/16] h-[min(54dvh,600px)] overflow-hidden rounded-3xl border border-white/15 bg-[#53331f] text-left shadow-[0_40px_120px_#0009] transition-[opacity,transform] duration-700 ease-[cubic-bezier(.22,1,.36,1)] outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white motion-reduce:transition-none lg:block" style={{ opacity: stage === 0 && !playing ? 1 : 0, transform: stage === 0 ? "none" : "translateY(24px)", pointerEvents: stage === 0 ? "auto" : "none" }}>
+            <div className="absolute inset-0 overflow-hidden rounded-[inherit] [clip-path:inset(0_round_24px)]">
+              <SeriesArtwork index={seriesIndex} />
+              <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#180e08]/90 via-transparent to-transparent" />
+              <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-7 py-6">
+                <span className="text-[30px] font-bold tracking-[-.04em] text-white">Episode 01</span>
+                <LiquidGlassSurface aria-hidden="true" className="shrink-0 rounded-full"><span className="grid size-[40px] place-items-center rounded-full"><PlayIcon className="size-[14px]" /></span></LiquidGlassSurface>
+              </span>
+            </div>
           </button>
+          {stage === 0 && !playing && <div className="absolute z-[7] hidden lg:block" style={{ top: "calc(35dvh + min(27dvh, 300px) - 24px)", right: "max(8px, calc(clamp(40px, 8vw, 160px) - 64px))" }}><LiquidGlassButton type="button" onClick={() => { setSeriesIndex(index => (index + 1) % GYRO_SERIES.length); setSelectedEpisode(1); }} aria-label={`View next series: ${GYRO_SERIES[(seriesIndex + 1) % GYRO_SERIES.length].title}`} className="grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-5"><path d="m9 5 7 7-7 7" /></svg>
+          </LiquidGlassButton></div>}
           <aside aria-label="Featured episode details" aria-hidden={!compact} inert={!compact} className="absolute right-8 z-[5] max-w-sm text-white transition-[opacity,transform] duration-[700ms] ease-out motion-reduce:transition-none lg:right-auto lg:w-[min(32vw,390px)]" style={{ top: "var(--compact-top)", left: "var(--details-left)", opacity: compact ? 1 : 0, transform: `translateY(${compact ? 0 : 12}px)`, pointerEvents: compact ? "auto" : "none" }}>
             <p className="mb-2 text-[10px] font-semibold tracking-[.2em] text-[#f4d6b0]/75">RVNEXTGEN ORIGINAL</p>
             <h2 className="font-serif text-xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">{series.lead} <em className="font-normal">{series.emphasis}</em> {series.end}</h2>
             <p className="mt-2 text-[11px] font-medium text-white/55 sm:text-sm">Episode 01</p>
             <p className="mt-3 hidden text-xs leading-relaxed text-white/65 sm:block">{series.description}</p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <button type="button" onClick={() => { if (featuredCard.current) setPlaying({ episode: 1, origin: featuredCard.current }); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-[#1a130e] transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+              <button type="button" onClick={() => { if (featuredCard.current) requestPlay({ episode: 1, origin: featuredCard.current }); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-[#1a130e] transition hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 <PlayIcon className="size-3.5" /> Play
               </button>
               <LiquidGlassButton type="button" aria-pressed={savedFeatured} onClick={() => setSavedSeries(previous => ({ ...previous, [series.id]: !savedFeatured }))} className="inline-flex h-11 items-center justify-center gap-2 rounded-full px-4 text-xs font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
@@ -461,7 +494,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
           <div aria-hidden="true" className={`pointer-events-none absolute bottom-[max(30px,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-white/70${noMoreStages ? " lg:hidden" : ""}`} style={{ opacity: stage === 0 ? 1 : 0 }}>
             <svg width="20" height="32" viewBox="0 0 20 32" fill="none"><path d="M10 2v24m-6-6 6 6 6-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
-          <div role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? "calc(var(--compact-top) + max(var(--compact-card-height), 224px) + 24px)" : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
+          <div ref={episodeLists} role="region" aria-label="Episode lists" aria-hidden={!featuredLift} inert={!featuredLift} className={`absolute inset-x-0 bottom-0 z-10 transition-[transform,opacity,top] duration-700 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none ${compact ? "overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-visible"}`} style={{ top: compact ? "calc(var(--compact-top) + max(var(--compact-card-height), 224px) + 24px)" : expandedListTop, opacity: carouselReveal, transform: `translateY(${(1 - carouselReveal) * 110}%)`, pointerEvents: featuredLift ? "auto" : "none" }}>
             <div className="mx-auto w-full max-w-5xl">
               <div ref={upcomingSection} className={`relative ${hasUpcoming ? "" : "lg:hidden"}`}>
                 <div className="mb-3 flex items-center justify-between gap-3 px-8">
@@ -475,7 +508,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
                   </div>
                 </div>
                 <div ref={episodeCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
-                  {upcomingEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); setPlaying(selection); }} />)}
+                  {upcomingEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={selection => { setSelectedEpisode(selection.episode); requestPlay(selection); }} />)}
                   {upcomingEpisodes.length === 0 && <p className="py-8 text-sm text-white/50">You’re all caught up. Replay an episode below.</p>}
                 </div>
                 <div aria-hidden={!featuredLift || compact} className="pointer-events-none absolute inset-x-8 top-full mt-1 flex items-center justify-center gap-2 text-[10px] leading-3 font-medium tracking-[.04em] text-white/45 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none" style={{ opacity: featuredLift && !compact ? 1 : 0, transform: `translateY(${compact ? -6 : 0}px)` }}>
@@ -488,7 +521,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
                   {visibleRecentEpisodes.length > 0 && <div className="hidden items-center gap-2 lg:flex"><LiquidGlassButton type="button" onClick={() => recentCarousel.current?.scrollBy({ left: -400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll recently watched left" className="grid size-11 place-items-center rounded-full text-xl text-white">‹</LiquidGlassButton><LiquidGlassButton type="button" onClick={() => recentCarousel.current?.scrollBy({ left: 400, behavior: reducedMotion ? "instant" : "smooth" })} aria-label="Scroll recently watched right" className="grid size-11 place-items-center rounded-full text-xl text-white">›</LiquidGlassButton></div>}
                 </div>
                 {visibleRecentEpisodes.length > 0 ? <div ref={recentCarousel} className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-8 px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
-                  {visibleRecentEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={setPlaying} />)}
+                  {visibleRecentEpisodes.map(episode => <EpisodeCard key={`${series.id}-${episode}`} seriesIndex={seriesIndex} episode={episode} onOpen={requestPlay} />)}
                 </div> : <p className="px-8 py-6 text-sm text-white/50">Episodes you open will appear here.</p>}
               </section>
             </div>
@@ -496,6 +529,7 @@ export default function DesertParallax({ onFeaturedReveal }: { onFeaturedReveal?
         </div>
       </div>
     </div>
-    {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} videoId={series.id === "desert" && playing.episode === 1 ? "NXnbLxUO4CU" : undefined} onClose={closePlayer} />}
+    {requestedEpisode && <HomeEpisodeAccess seriesIndex={seriesIndex} episode={requestedEpisode.episode} onClose={() => requestPlay(null)} onReady={playback => { setResolvedPlayback(playback); setPlaying(requestedEpisode); requestPlay(null); }} />}
+    {playing && <EpisodeExpansion selection={playing} seriesTitle={series.title} videoId={resolvedPlayback && "youtubeId" in resolvedPlayback ? resolvedPlayback.youtubeId : undefined} streamUrl={resolvedPlayback && !("youtubeId" in resolvedPlayback) ? resolvedPlayback.playerUrl : undefined} onClose={closePlayer} />}
   </div>;
 }

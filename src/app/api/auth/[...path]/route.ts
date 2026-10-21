@@ -56,7 +56,7 @@ async function handle(request: NextRequest, { params }: Context, method: "GET" |
       if (!refreshToken) {
         return route === "logout"
           ? new NextResponse(null, { status: 204 })
-          : NextResponse.json({ message: "Not signed in" }, { status: 401 });
+          : NextResponse.json(null, { status: 200 });
       }
       body = { refreshToken };
     }
@@ -64,6 +64,12 @@ async function handle(request: NextRequest, { params }: Context, method: "GET" |
 
   const upstream = await forward(request, route, { method, body });
   if (!upstream) return NextResponse.json({ message: "Could not reach the server. Try again." }, { status: 502 });
+
+  if (route === "refresh" && upstream.status === 401) {
+    const response = NextResponse.json(null, { status: 200 });
+    response.cookies.set(REFRESH_COOKIE, "", cookieOptions(0));
+    return response;
+  }
 
   const text = await upstream.text();
   const data = text ? (JSON.parse(text) as Record<string, unknown>) : null;
@@ -76,7 +82,7 @@ async function handle(request: NextRequest, { params }: Context, method: "GET" |
     : NextResponse.json(data, { status: upstream.status });
 
   if (refreshToken) response.cookies.set(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_MAX_AGE));
-  else if (route === "logout" || (route === "refresh" && upstream.status === 401)) {
+  else if (route === "logout") {
     response.cookies.set(REFRESH_COOKIE, "", cookieOptions(0));
   }
   return response;

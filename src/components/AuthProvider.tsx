@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      adopt(await withRefreshLock(() => authApi<Session>("refresh")));
+      adopt(await withRefreshLock(() => authApi<Session | null>("refresh")));
     } catch {
       adopt(null);
     }
