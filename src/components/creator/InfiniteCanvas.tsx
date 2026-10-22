@@ -37,11 +37,39 @@ export default function InfiniteCanvas({ items, selectedId, onSelect }: {
     if (selectedId) focus(selectedId, ready);
   }, [selectedId, items.length, focus, ready]);
 
+  // Keep trackpad gestures away from the browser while the canvas is on screen: no swipe back/forward
+  // (overscroll navigation). The canvas handlers below pan and pinch-zoom instead.
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = { root: root.style.overscrollBehavior, body: document.body.style.overscrollBehavior };
+    root.style.overscrollBehavior = "none";
+    document.body.style.overscrollBehavior = "none";
+    const scrollsHorizontally = (target: EventTarget | null) => {
+      for (let node = target instanceof Element ? target : null; node && node !== document.documentElement; node = node.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(node).overflowX) && node.scrollWidth > node.clientWidth + 1) return true;
+      }
+      return false;
+    };
+    const guard = (event: globalThis.WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) return;
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && !scrollsHorizontally(event.target)) event.preventDefault();
+    };
+    window.addEventListener("wheel", guard, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("wheel", guard, { capture: true });
+      root.style.overscrollBehavior = previous.root;
+      document.body.style.overscrollBehavior = previous.body;
+    };
+  }, []);
+
   useEffect(() => {
     const area = viewport.current;
     if (!area) return;
     const onWheel = (event: globalThis.WheelEvent) => {
-      if (event.target instanceof Element && event.target.closest("[data-canvas-card]") && !event.ctrlKey && !event.metaKey) return;
+      // Vertical scrolling inside a card stays native; everything else belongs to the canvas, so a
+      // horizontal two-finger swipe pans instead of triggering the browser's back/forward gesture.
+      const verticalInCard = event.target instanceof Element && event.target.closest("[data-canvas-card]") && !event.ctrlKey && !event.metaKey && Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+      if (verticalInCard) return;
       event.preventDefault();
       area.dataset.wheeling = "true";
       if (wheelTimer.current) window.clearTimeout(wheelTimer.current);
@@ -80,6 +108,7 @@ export default function InfiniteCanvas({ items, selectedId, onSelect }: {
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || (event.target instanceof Element && event.target.closest("[data-canvas-card],button"))) return;
+    window.getSelection()?.removeAllRanges();
     drag.current = { x: event.clientX, y: event.clientY, startX: view.x, startY: view.y };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.dataset.dragging = "true";

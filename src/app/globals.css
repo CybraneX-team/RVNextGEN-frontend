@@ -60,10 +60,12 @@
     --compact-card-width: min(15.5vw, 215px, 19.6875dvh);
     --compact-card-height: min(27.555556vw, 382.222222px, 35dvh);
     --compact-scale: .5;
-    --compact-center-x: max(300px, calc(50vw - 220px));
+    /* Line the card up with the left edge of the episode rows below (max-w-5xl + 32px padding). */
+    --compact-left: calc(50vw - min(512px, 50vw) + 32px);
+    --compact-center-x: calc(var(--compact-left) + var(--compact-card-width) / 2);
     --compact-translate-x: calc(-50vw + var(--compact-center-x));
     --compact-translate-y: calc(-50dvh + var(--compact-top) + min(13.777778vw, 191.111111px, 17.5dvh));
-    --details-left: calc(var(--compact-center-x) + min(7.75vw, 107.5px, 9.84375dvh) + 32px);
+    --details-left: calc(var(--compact-left) + var(--compact-card-width) + 40px);
     --episode-row-height: calc(min(21.333333vw, 312.888889px, 32dvh) + 56px);
   }
   .series-episode-card { width: min(12vw, 176px, 18dvh); }

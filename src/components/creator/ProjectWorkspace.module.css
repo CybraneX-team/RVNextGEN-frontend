@@ -4,8 +4,12 @@
   background-size: 22px 22px;
 }
 
-.canvasViewport { cursor: grab; touch-action: none; }
+.canvasViewport { cursor: grab; touch-action: none; overscroll-behavior: none; }
 .canvasViewport[data-dragging] { cursor: grabbing; }
+/* Panning the canvas must never select the text it passes over. */
+.canvasViewport[data-dragging],
+.canvasViewport[data-dragging] * { user-select: none !important; -webkit-user-select: none !important; }
+.canvasViewport [data-canvas-card] { overscroll-behavior: contain; }
 .canvasWorld { position: absolute; inset: 0 auto auto 0; width: 0; height: 0; transform-origin: 0 0; transition: transform 360ms cubic-bezier(.22, 1, .36, 1), opacity 150ms ease; will-change: transform; }
 .canvasViewport[data-dragging] .canvasWorld,
 .canvasViewport[data-wheeling] .canvasWorld,
