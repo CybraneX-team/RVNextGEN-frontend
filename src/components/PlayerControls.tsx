@@ -29,7 +29,6 @@ export const SettingsIcon = icon(<><path d="M4 7h8M18 7h2M4 17h2M12 17h8" /><cir
 export const CheckIcon = icon(<path d="m5 12.5 4.5 4.5L19 7.5" />);
 export const ChevronRightIcon = icon(<path d="m9 6 6 6-6 6" />);
 export const SunIcon = icon(<><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>);
-export const RotateIcon = icon(<><path d="M20 12a8 8 0 0 1-13.7 5.6M4 12a8 8 0 0 1 13.7-5.6" /><path d="M18 3v4h-4M6 21v-4h4" /></>);
 
 /** A scrubbing timeline: buffered + played fill, a growing thumb, a time bubble on hover/drag, and slider keyboard support. */
 export function Scrubber({ position, duration, buffered, disabled, onCommit, onScrubChange }: {
@@ -105,12 +104,11 @@ export function Scrubber({ position, duration, buffered, disabled, onCommit, onS
   </div>;
 }
 
-export type SettingsPage = "root" | "quality" | "captions" | "speed";
+export type SettingsPage = "root" | "quality" | "captions";
 export type CaptionTrack = { code: string; name: string };
 
 const QUALITY_LABELS: Record<string, string> = { highres: "4320p", hd2880: "2880p", hd2160: "2160p (4K)", hd1440: "1440p", hd1080: "1080p", hd720: "720p", large: "480p", medium: "360p", small: "240p", tiny: "144p", auto: "Auto" };
 export const qualityLabel = (level: string) => QUALITY_LABELS[level] ?? level;
-export const rateLabel = (rate: number) => rate === 1 ? "Normal" : `${rate}×`;
 
 function Row({ label, value, onClick, selected, trailing, disabled, hint, focusFirst }: { label: string; value?: string; onClick?: () => void; selected?: boolean; trailing?: ReactNode; disabled?: boolean; hint?: string; focusFirst?: boolean }) {
   return <button type="button" role={selected === undefined ? "menuitem" : "menuitemradio"} aria-checked={selected} disabled={disabled} onClick={onClick} data-first={focusFirst ? "" : undefined} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-3 text-left text-[15px] font-medium text-white/90 outline-none transition-colors hover:bg-white/10 focus-visible:bg-white/15 disabled:opacity-40 disabled:hover:bg-transparent">
@@ -119,20 +117,12 @@ function Row({ label, value, onClick, selected, trailing, disabled, hint, focusF
   </button>;
 }
 
-function Switch({ on }: { on: boolean }) {
-  return <span aria-hidden="true" className={`relative inline-block h-[26px] w-[44px] rounded-full transition-colors duration-200 ${on ? "bg-[#34c759]" : "bg-white/25"}`}>
-    <span className="absolute top-[2px] left-[2px] size-[22px] rounded-full bg-white shadow-[0_2px_6px_#0005]" style={{ transform: `translateX(${on ? 18 : 0}px)`, transition: `transform 260ms ${EASE}` }} />
-  </span>;
-}
-
 /** Liquid-glass settings menu: a popover on wide screens, a bottom sheet on phones. */
-export function SettingsPanel({ open, page, onPage, onClose, qualities, quality, onQuality, tracks, captionLang, onCaption, rates, rate, onRate, brightness, onBrightness, rotationSupported, autoRotate, onAutoRotate }: {
+export function SettingsPanel({ open, page, onPage, onClose, qualities, quality, onQuality, tracks, captionLang, onCaption, brightness, onBrightness }: {
   open: boolean; page: SettingsPage; onPage: (page: SettingsPage) => void; onClose: () => void;
   qualities: string[]; quality: string; onQuality: (level: string) => void;
   tracks: CaptionTrack[]; captionLang: string | null; onCaption: (code: string | null) => void;
-  rates: number[]; rate: number; onRate: (rate: number) => void;
   brightness: number; onBrightness: (value: number) => void;
-  rotationSupported: boolean; autoRotate: boolean; onAutoRotate: (value: boolean) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -156,14 +146,12 @@ export function SettingsPanel({ open, page, onPage, onClose, qualities, quality,
         {page === "root" && <>
           <Row focusFirst label="Quality" value={qualityLabel(quality)} trailing={<ChevronRightIcon className="size-4" />} onClick={() => onPage("quality")} />
           <Row label="Subtitles & language" value={captionName} trailing={<ChevronRightIcon className="size-4" />} onClick={() => onPage("captions")} />
-          <Row label="Playback speed" value={rateLabel(rate)} trailing={<ChevronRightIcon className="size-4" />} onClick={() => onPage("speed")} />
           <div className="mx-3 my-1 h-px bg-white/15" />
           <div className="flex min-h-11 items-center gap-3 px-3 py-2">
             <SunIcon className="size-5 shrink-0 text-white/80" />
             <input type="range" aria-label="Brightness" min={50} max={150} step={1} value={brightness} onChange={event => onBrightness(Number(event.target.value))} className="h-6 w-full min-w-0 cursor-pointer accent-white" />
             <span className="w-10 shrink-0 text-right text-xs tabular-nums text-white/60">{brightness}%</span>
           </div>
-          <Row label="Auto-rotate" hint={rotationSupported ? (autoRotate ? "Follows your device" : "Locked to current orientation") : "Use your device’s rotation lock"} disabled={!rotationSupported} onClick={() => onAutoRotate(!autoRotate)} trailing={<span className="ml-1 flex items-center"><RotateIcon className="mr-2 size-4 text-white/60" /><Switch on={autoRotate} /></span>} />
         </>}
         {page === "quality" && <>
           {header("Quality")}
@@ -176,10 +164,6 @@ export function SettingsPanel({ open, page, onPage, onClose, qualities, quality,
           <Row label="Off" selected={captionLang === null} onClick={() => onCaption(null)} />
           {tracks.map(track => <Row key={track.code} label={track.name} selected={captionLang === track.code} onClick={() => onCaption(track.code)} />)}
           {tracks.length === 0 && <p className="px-3 py-2 text-sm leading-snug text-white/60">No subtitles are available for this video yet. They appear once playback starts.</p>}
-        </>}
-        {page === "speed" && <>
-          {header("Playback speed")}
-          {rates.map(value => <Row key={value} label={rateLabel(value)} selected={rate === value} onClick={() => onRate(value)} />)}
         </>}
       </div>
     </LiquidGlassSurface>
