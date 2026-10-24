@@ -68,7 +68,9 @@ type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise
 const fullscreenElement = () => (document as FullscreenDocument).fullscreenElement ?? (document as FullscreenDocument).webkitFullscreenElement ?? null;
 const fullscreenAvailable = () => typeof document !== "undefined" && Boolean(document.fullscreenEnabled || (document as FullscreenDocument).webkitFullscreenEnabled);
 const exitFullscreen = () => { void Promise.resolve(document.exitFullscreen?.() ?? (document as FullscreenDocument).webkitExitFullscreen?.()).catch(() => {}); };
-const enterFullscreen = (element: FullscreenElement) => { void Promise.resolve(element.requestFullscreen?.({ navigationUI: "hide" }) ?? element.webkitRequestFullscreen?.()).catch(() => {}); };
+const enterFullscreen = (element: FullscreenElement) => Promise.resolve(element.requestFullscreen?.({ navigationUI: "hide" }) ?? element.webkitRequestFullscreen?.() ?? Promise.reject(new Error("Full screen unavailable")));
+type LockableOrientation = ScreenOrientation & { lock?: (orientation: string) => Promise<void> };
+const orientation = () => (typeof screen === "undefined" ? undefined : screen.orientation as LockableOrientation | undefined);
 const BRIGHTNESS_KEY = "rv-player-brightness";
 // Netflix-style: let the episode art settle for a moment, then start playing on its own.
 const AUTOPLAY_DELAY_MS = 1000;
@@ -213,7 +215,11 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
   }, [chrome, playing, panel, scrubbing, activity]);
 
   useEffect(() => {
-    const onChange = () => setFullscreen(Boolean(fullscreenElement()));
+    const onChange = () => {
+      const active = Boolean(fullscreenElement());
+      setFullscreen(active);
+      if (!active) { try { orientation()?.unlock(); } catch { /* Not locked. */ } }
+    };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     return () => { document.removeEventListener("fullscreenchange", onChange); document.removeEventListener("webkitfullscreenchange", onChange); };
@@ -225,9 +231,16 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     setPanel(null);
     setNativeControls(value => !value);
   };
-  const toggleFullscreen = () => {
-    if (fullscreenElement()) exitFullscreen();
-    else if (dialog.current) enterFullscreen(dialog.current);
+  const toggleFullscreen = async () => {
+    if (fullscreenElement()) { exitFullscreen(); return; }
+    const modal = dialog.current;
+    if (!modal) return;
+    // The dialog fills the screen; if the browser refuses it, fall back to the whole page.
+    try { await enterFullscreen(modal); } catch { try { await enterFullscreen(document.documentElement); } catch { return; } }
+    // On phones and tablets, turn the screen to landscape once full screen is on (Android; iOS has no lock).
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      try { await orientation()?.lock?.("landscape"); } catch { /* The browser or device doesn't allow locking. */ }
+    }
   };
 
 
@@ -333,7 +346,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     else if (key === "arrowleft") { event.preventDefault(); skipBy(-10); }
     else if (key === "arrowright") { event.preventDefault(); skipBy(10); }
     else if (key === "m") toggleMute();
-    else if (key === "f" && fullscreenSupported) toggleFullscreen();
+    else if (key === "f" && fullscreenSupported) void toggleFullscreen();
     else if (key === "c") openPanel("captions");
   };
 
@@ -367,7 +380,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
           <LiquidGlassButton type="button" onClick={() => openPanel("captions")} disabled={!playerReady} aria-label="Subtitles and language" aria-haspopup="menu" aria-expanded={panel === "captions"} title="Subtitles (C)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><CaptionsIcon /></LiquidGlassButton>
           <LiquidGlassButton type="button" onClick={() => openPanel("root")} disabled={!playerReady} aria-label="Player settings" aria-haspopup="menu" aria-expanded={panel !== null} title="Settings" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><SettingsIcon /></LiquidGlassButton>
           </>}
-          {fullscreenSupported ? <LiquidGlassButton type="button" onClick={toggleFullscreen} aria-label={fullscreen ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton> : videoId && !streamUrl && <LiquidGlassButton type="button" onClick={toggleNativeControls} aria-label={nativeControls ? "Back to standard controls" : "Full screen"} title={nativeControls ? "Back to standard controls" : "Full screen (opens YouTube’s own controls on this device)"} className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{nativeControls ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>}
+          {fullscreenSupported ? <LiquidGlassButton type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton> : videoId && !streamUrl && <LiquidGlassButton type="button" onClick={toggleNativeControls} aria-label={nativeControls ? "Back to standard controls" : "Full screen"} title={nativeControls ? "Back to standard controls" : "Full screen (opens YouTube’s own controls on this device)"} className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{nativeControls ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>}
         </div>}
       </div>
       {playerError && <p role="alert" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">{playerError}</p>}
