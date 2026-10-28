@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../AuthProvider";
 import { getCreditBalance } from "@/lib/creator";
 import {
-  confirmStripe, creditPacks, creditPurchases, creditRegion, startCreditPurchase,
+  confirmStripe, creditPacks, creditPurchases, creditRegion, startCreditPurchase, reconcileCreditPurchases, reconcileCreditPurchase,
   type CreditPack, type CreditRegion, type CreditTxn,
 } from "@/lib/credits";
 import { formatMoney } from "@/lib/money";
@@ -28,6 +28,7 @@ export default function CreditsApp() {
   const [stripePack, setStripePack] = useState<CreditPack | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
   const [stripePaying, setStripePaying] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState<string | null>(null);
 
   const reloadBalance = useCallback(async () => {
     if (!accessToken) return;
@@ -46,10 +47,15 @@ export default function CreditsApp() {
     creditPacks(accessToken).then((p) => { if (live) setPacks(p); }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Could not load credit packs"); });
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch then set; not a synchronous cascade
     void reloadBalance(); void reloadHistory();
+    reconcileCreditPurchases(accessToken).then((result) => {
+      if (!live) return;
+      if (result.recovered) { void reloadBalance(); void reloadHistory(); setNotice("Credits added to your balance."); }
+      if (result.unavailable) setNotice("Could not check a pending payment. Use Check payment to retry; do not pay again.");
+    }).catch((e) => { if (live) setError(e instanceof Error ? e.message : "Could not check pending payments"); });
     return () => { live = false; };
   }, [accessToken, reloadBalance, reloadHistory]);
 
-  /** Poll until the webhook grants the purchased credits. */
+  /** Stripe completes through its signed webhook. */
   const pollBalance = useCallback(async (before: number | null) => {
     for (let i = 0; i < 8; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -65,13 +71,28 @@ export default function CreditsApp() {
     if (region.provider === "stripe") { setStripePack(pack); return; }
     setBusyPack(pack.id);
     try {
-      const before = balance;
-      await startCreditPurchase(pack, "razorpay", accessToken, { email: user.email });
-      setNotice("Payment received — adding your credits…");
-      const ok = await pollBalance(before);
-      setNotice(ok ? "Credits added to your balance." : "Payment is processing; your credits will appear shortly.");
+      let payment = await startCreditPurchase(pack, "razorpay", accessToken, { email: user.email });
+      if (!payment) throw new Error("Could not confirm the payment");
+      for (let i = 0; i < 8 && payment.status === "PENDING"; i++) {
+        setNotice("Checking payment confirmation…");
+        await new Promise((r) => setTimeout(r, 2000));
+        payment = await reconcileCreditPurchase(payment.id, accessToken);
+      }
+      await Promise.all([reloadBalance(), reloadHistory()]);
+      setNotice(payment.status === "SUCCEEDED" ? "Credits added to your balance." : "Payment is not confirmed yet. Use Check payment to retry; do not pay again.");
     } catch (e) { if ((e as Error).message !== "Payment cancelled") setError(e instanceof Error ? e.message : "Payment failed"); }
     finally { setBusyPack(null); }
+  }
+
+  async function checkPayment(id: string) {
+    if (!accessToken) return;
+    setCheckingPayment(id); setError(null);
+    try {
+      const payment = await reconcileCreditPurchase(id, accessToken);
+      await Promise.all([reloadBalance(), reloadHistory()]);
+      setNotice(payment.status === "SUCCEEDED" ? "Credits added to your balance." : "Payment is not confirmed yet. If you already paid, check again shortly; do not pay again.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not check payment"); }
+    finally { setCheckingPayment(null); }
   }
 
   // Mount the Stripe Payment Element once the modal container is on screen.
@@ -128,7 +149,7 @@ export default function CreditsApp() {
                   <span className="text-[13px] font-medium text-white/80">{p.name}</span>
                   <span className="mt-1 text-[22px] font-semibold">{p.creditCount.toLocaleString()} <span className="text-[13px] font-normal text-white/55">credits</span></span>
                   <span className="mt-1 text-[13px] text-white/55">Pay {formatMoney(p.pricePaise, p.currency)}</span>
-                  <button onClick={() => void buy(p)} disabled={busyPack === p.id || !region} className="mt-3 h-9 rounded-md bg-[#e5b27f] text-[13px] font-semibold text-[#211a12] hover:bg-[#d9a46d] disabled:opacity-50">{busyPack === p.id ? "Opening…" : "Buy"}</button>
+                  <button onClick={() => void buy(p)} disabled={busyPack !== null || !region} className="mt-3 h-9 rounded-md bg-[#e5b27f] text-[13px] font-semibold text-[#211a12] hover:bg-[#d9a46d] disabled:opacity-50">{busyPack === p.id ? "Processing…" : "Buy"}</button>
                 </div>
               ))}
             </div>
@@ -142,7 +163,7 @@ export default function CreditsApp() {
               {history.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 px-4 py-3">
                   <div><p className="text-[13px] text-white/80">{t.pack?.name ?? "Credit pack"}{t.pack ? ` · ${t.pack.creditCount.toLocaleString()} credits` : ""}</p><p className="text-[11px] text-white/40">{new Date(t.createdAt).toLocaleString()} · {t.provider.toLowerCase()}</p></div>
-                  <div className="text-right"><p className="text-[14px] font-semibold text-white/80">{formatMoney(t.amountPaise, t.currency)}</p><p className={`text-[11px] ${t.status === "SUCCEEDED" ? "text-[#9fe0bd]" : t.status === "FAILED" ? "text-[#ff8f8f]" : "text-white/40"}`}>{t.status.toLowerCase()}</p></div>
+                  <div className="text-right"><p className="text-[14px] font-semibold text-white/80">{formatMoney(t.amountPaise, t.currency)}</p><p className={`text-[11px] ${t.status === "SUCCEEDED" ? "text-[#9fe0bd]" : t.status === "FAILED" ? "text-[#ff8f8f]" : "text-white/40"}`}>{t.status.toLowerCase()}</p>{t.status === "PENDING" && t.provider === "RAZORPAY" && <button onClick={() => void checkPayment(t.id)} disabled={checkingPayment !== null} className="mt-1 text-[12px] text-[#e7bd94] underline disabled:opacity-50">{checkingPayment === t.id ? "Checking…" : "Check payment"}</button>}</div>
                 </li>
               ))}
             </ul>

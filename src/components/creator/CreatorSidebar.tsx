@@ -71,6 +71,6 @@ export default function CreatorSidebar({ activeSection, currentProject }: { acti
         {loadError && <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)} className="px-3 py-2 text-left text-[11px] text-white/55 hover:text-white">Couldn’t load {visibleProjects.length ? "all chats" : "chats"}. Retry</button>}
       </div>
     </div>
-    <Link href="/wallet" className="mt-auto flex h-[38px] shrink-0 items-center gap-2 rounded-full border border-white/[.08] bg-[#0b0b0c] px-3 text-[11px] font-medium text-white/85 transition-colors hover:border-white/20 hover:bg-[#202022]"><Sparkles className="size-[15px] text-[#fa5b2d]" /><span className="flex-1 truncate">Unlock more features</span><ChevronRight className="size-3 text-white/35" /></Link>
+    <Link href="/creator/credits" className="mt-auto flex h-[38px] shrink-0 items-center gap-2 rounded-full border border-white/[.08] bg-[#0b0b0c] px-3 text-[11px] font-medium text-white/85 transition-colors hover:border-white/20 hover:bg-[#202022]"><Sparkles className="size-[15px] text-[#fa5b2d]" /><span className="flex-1 truncate">Get more credits</span><ChevronRight className="size-3 text-white/35" /></Link>
   </nav>;
 }
