@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 5173",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
@@ -20,7 +20,7 @@
     "@tiptap/starter-kit": "^3.32.0",
     "d3-geo": "^3.1.1",
     "lucide-react": "^1.50.0",
-    "next": "16.3.6",
+    "next": "16.4.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "topojson-client": "^3.1.0",
@@ -36,7 +36,7 @@
     "@types/topojson-client": "^3.1.5",
     "@types/topojson-specification": "^1.0.5",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

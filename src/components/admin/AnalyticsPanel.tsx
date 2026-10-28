@@ -15,6 +15,7 @@ const td = "px-3 py-2 text-[13px] text-white/80";
 const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const sourceLabels: Record<string, string> = { referral: "External website", internal: "Within site", direct: "No referrer", search: "Search engine", social: "Social platform" };
 
 function useRangeData<T>(fn: (r: AnalyticsRange) => Promise<T>, range: AnalyticsRange, deps: unknown[]) {
   const [data, setData] = useState<T | null>(null);
@@ -66,15 +67,16 @@ function UsersView({ token, range, deps }: { token: string; range: AnalyticsRang
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card label="Total users" value={t.totalUsers} /><Card label="New (range)" value={t.newUsers} />
         <Card label="DAU (Daily Active Users)" value={t.dau} /><Card label="WAU (Weekly Active Users)" value={t.wau} />
-        <Card label="MAU (Monthlu Active Users)" value={t.mau} /><Card label="Active (range)" value={t.activeInRange} />
+        <Card label="MAU (Monthly Active Users)" value={t.mau} /><Card label="Active (range)" value={t.activeInRange} />
         <Card label="Returning" value={t.returningUsers} /><Card label="New active" value={t.newActiveUsers} />
       </div>
       <GeographyCard token={token} range={range} />
+      <p className="text-[11px] text-white/45">Device, OS, browser, and traffic source show distinct active users with recorded analytics events in this range. One user can appear in multiple groups. Traffic source comes from the browser referrer; “External website” is not an invite referral count.</p>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Device"><Bars rows={data.device.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
-        <Section title="Operating system"><Bars rows={data.os.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
-        <Section title="Browser"><Bars rows={data.browser.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
-        <Section title="Traffic source"><Bars rows={data.source.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
+        <Section title="Device · unique users"><Bars rows={data.device.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
+        <Section title="Operating system · unique users"><Bars rows={data.os.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
+        <Section title="Browser · unique users"><Bars rows={data.browser.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
+        <Section title="Traffic source · unique users"><Bars rows={data.source.map((d) => ({ label: sourceLabels[d.key ?? ""] ?? d.key ?? "Unknown", value: d.count }))} /></Section>
         <Section title="New users / day"><Bars rows={data.trend.map((d) => ({ label: new Date(d.day).toLocaleDateString(), value: d.newUsers }))} /></Section>
       </div>
     </div>
