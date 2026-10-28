@@ -6,6 +6,7 @@ import {
   type AnalyticsRange, type Overview,
 } from "@/lib/admin";
 import { formatMoney } from "@/lib/money";
+import GeographyCard from "./GeographyCard";
 
 const SUBTABS = ["Users", "Content", "Revenue", "Funnel", "Creator Lab"] as const;
 type SubTab = (typeof SUBTABS)[number];
@@ -64,16 +65,16 @@ function UsersView({ token, range, deps }: { token: string; range: AnalyticsRang
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card label="Total users" value={t.totalUsers} /><Card label="New (range)" value={t.newUsers} />
-        <Card label="DAU" value={t.dau} /><Card label="WAU" value={t.wau} />
-        <Card label="MAU" value={t.mau} /><Card label="Active (range)" value={t.activeInRange} />
+        <Card label="DAU (Daily Active Users)" value={t.dau} /><Card label="WAU (Weekly Active Users)" value={t.wau} />
+        <Card label="MAU (Monthlu Active Users)" value={t.mau} /><Card label="Active (range)" value={t.activeInRange} />
         <Card label="Returning" value={t.returningUsers} /><Card label="New active" value={t.newActiveUsers} />
       </div>
+      <GeographyCard token={token} range={range} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Device"><Bars rows={data.device.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
         <Section title="Operating system"><Bars rows={data.os.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
         <Section title="Browser"><Bars rows={data.browser.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
         <Section title="Traffic source"><Bars rows={data.source.map((d) => ({ label: d.key ?? "Unknown", value: d.count }))} /></Section>
-        <Section title="Top countries"><Bars rows={data.geo.slice(0, 12).map((g) => ({ label: g.country, value: g.events }))} /></Section>
         <Section title="New users / day"><Bars rows={data.trend.map((d) => ({ label: new Date(d.day).toLocaleDateString(), value: d.newUsers }))} /></Section>
       </div>
     </div>
@@ -198,9 +199,9 @@ export default function AnalyticsPanel({ token }: { token: string }) {
       </div>
       {sub === "Users" ? <UsersView token={token} range={range} deps={deps} />
         : sub === "Content" ? <ContentView token={token} range={range} deps={deps} />
-        : sub === "Revenue" ? <RevenueView token={token} range={range} deps={deps} />
-        : sub === "Funnel" ? <FunnelView token={token} range={range} deps={deps} />
-        : <CreatorView token={token} range={range} deps={deps} />}
+          : sub === "Revenue" ? <RevenueView token={token} range={range} deps={deps} />
+            : sub === "Funnel" ? <FunnelView token={token} range={range} deps={deps} />
+              : <CreatorView token={token} range={range} deps={deps} />}
     </div>
   );
 }

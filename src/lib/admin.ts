@@ -263,6 +263,16 @@ export type ContentAnalytics = {
   range: { start: string; end: string }; totalViews: number;
   items: { id: string; title: string; type: string; durationSecs: number | null; uniqueViewers: number; starts: number; completes: number; completionRate: number; avgPercentComplete: number | null }[];
 };
+export type GeoTier = "high" | "medium" | "low";
+export type GeoCountry = { country: string; visitors: number; events: number; share: number; change: number | null; tier: GeoTier };
+export type GeoRegion = { country: string; region: string; visitors: number; events: number; shareOfCountry: number };
+export type GeographyAnalytics = {
+  range: { start: string; end: string };
+  totals: { visitors: number; events: number; unknownVisitors: number; unknownEvents: number; countries: number; regions: number };
+  countries: GeoCountry[];
+  regions: GeoRegion[];
+};
+export const analyticsGeography = (token: string, r: AnalyticsRange = {}) => apiFetch<GeographyAnalytics>(`admin/analytics/geography${rangeQuery(r)}`, { token });
 export const analyticsContent = (token: string, r: AnalyticsRange = {}) => apiFetch<ContentAnalytics>(`admin/analytics/content${rangeQuery(r)}`, { token });
 export type Dropoff = { episodeId: string; buckets: { decile: number; label: string; viewers: number }[] };
 export const analyticsDropoff = (token: string, episodeId: string, r: AnalyticsRange = {}) => apiFetch<Dropoff>(`admin/analytics/content/${episodeId}/dropoff${rangeQuery(r)}`, { token });
