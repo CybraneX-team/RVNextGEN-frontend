@@ -37,7 +37,7 @@ const IMAGE_MODELS: ModelOption[] = [
 
 const VIDEO_MODELS: ModelOption[] = [
   // fal Seedance works today with the existing FAL_KEY. Listed first = default.
-  { provider: "fal", model: "fal-ai/bytedance/seedance/v1/pro/text-to-video", label: "fal · Seedance 1 Pro", credits: 60 },
+  { provider: "fal", model: "fal-ai/bytedance/seedance/v1/pro/image-to-video", label: "fal · Seedance 1 Pro", credits: 60 },
   // Higgsfield options require HIGGSFIELD_API_URL to be set on the backend.
   { provider: "higgsfield", model: "bytedance/seedance-2.5-text-to-video", label: "Higgsfield · Seedance 2.5", credits: 50 },
   { provider: "higgsfield", model: "default", label: "Higgsfield · Default", credits: 50 },
