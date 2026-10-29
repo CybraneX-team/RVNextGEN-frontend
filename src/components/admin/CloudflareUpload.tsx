@@ -146,10 +146,9 @@ export default function CloudflareUpload({ onCreated }: { onCreated?: () => void
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-[20px] font-semibold text-white">Add from Cloudflare</h2>
-      <div className="mt-3 inline-flex rounded-lg border border-white/12 p-0.5">
+      <div className="inline-flex rounded-lg border border-white/12 p-0.5">
         {(["movie", "series"] as const).map((k) => (
-          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold capitalize ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k}</button>
+          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k === "movie" ? "Single movie or short" : "Series with episodes"}</button>
         ))}
       </div>
 

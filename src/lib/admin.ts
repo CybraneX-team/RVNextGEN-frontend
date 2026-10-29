@@ -144,6 +144,8 @@ export type AdminUser = {
   id: string; email: string; role: "USER" | "CREATOR" | "ADMIN"; creditsBalance: number;
   emailVerifiedAt: string | null; createdAt: string;
   profile: { displayName: string | null; phoneNumber: string | null; countryCode: string | null } | null;
+  /** Viewer Wallet (episode credit) balances, one per currency the user has used. */
+  walletBalances?: { currency: string; balanceMinor: number }[];
 };
 export const adminUsers = (token: string, q?: string, status?: "paid" | "free") =>
   apiFetch<Paginated<AdminUser>>(`admin/users${listQuery({ q, status })}`, { token });
@@ -237,6 +239,16 @@ export type CreateWalletPackBody = { name: string; creditAmountMinor: number; pr
 export const createWalletPack = (body: CreateWalletPackBody, token: string) => apiFetch<WalletPack>("admin/wallet-packs", { method: "POST", body, token });
 export type UpdateWalletPackBody = { name?: string; creditAmountMinor?: number; pricePaise?: number; isActive?: boolean };
 export const updateWalletPack = (id: string, body: UpdateWalletPackBody, token: string) => apiFetch<WalletPack>(`admin/wallet-packs/${id}`, { method: "PATCH", body, token });
+
+// --- Creator Lab credit packs (sold at /creator/credits) ---
+export type CreditPack = { id: string; name: string; creditCount: number; pricePaise: number; currency: "INR" | "USD" | "AED"; isActive: boolean };
+export const adminCreditPacks = (token: string) => apiFetch<Paginated<CreditPack>>("admin/credit-packs?limit=100", { token });
+export type CreateCreditPackBody = { name: string; creditCount: number; pricePaise: number; currency: "INR" | "USD" | "AED" };
+export const createCreditPack = (body: CreateCreditPackBody, token: string) => apiFetch<CreditPack>("admin/credit-packs", { method: "POST", body, token });
+export type UpdateCreditPackBody = { name?: string; creditCount?: number; pricePaise?: number; isActive?: boolean };
+export const updateCreditPack = (id: string, body: UpdateCreditPackBody, token: string) => apiFetch<CreditPack>(`admin/credit-packs/${id}`, { method: "PATCH", body, token });
+export type CreditPackPurchase = { id: string; provider: string; amountPaise: number; currency: string; status: string; createdAt: string; user: { id: string; email: string } | null; pack: { id: string; name: string; creditCount: number } | null };
+export const adminCreditPackPurchases = (token: string) => apiFetch<Paginated<CreditPackPurchase>>("admin/credit-pack-purchases?limit=20", { token });
 
 export type WalletPurchase = { id: string; provider: string; amountPaise: number; currency: string; amountCreditedMinor: number | null; status: string; createdAt: string; user: { id: string; email: string } | null; pack: { id: string; name: string } | null };
 export const adminWalletPurchases = (token: string, status?: string) => apiFetch<Paginated<WalletPurchase>>(`admin/wallet-purchases${listQuery({ status })}`, { token });

@@ -86,10 +86,9 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-[20px] font-semibold text-white">Add from YouTube</h2>
-      <div className="mt-3 inline-flex rounded-lg border border-white/12 p-0.5">
+      <div className="inline-flex rounded-lg border border-white/12 p-0.5">
         {(["movie", "series"] as const).map((k) => (
-          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold capitalize ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k}</button>
+          <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-md px-4 py-1.5 text-[13px] font-semibold ${kind === k ? "bg-white text-[#0e0d0f]" : "text-white/60 hover:text-white/90"}`}>{k === "movie" ? "Single movie or short" : "Series with episodes"}</button>
         ))}
       </div>
 
@@ -135,7 +134,7 @@ export default function AddVideo({ onCreated }: { onCreated?: () => void }) {
 
       {notice && <p role={notice.tone === "error" ? "alert" : "status"} className={`mt-4 text-[13px] ${notice.tone === "error" ? "text-[#ff8f8f]" : "text-[#8fe3b4]"}`}>{notice.text}</p>}
 
-      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Custom poster images are stored on Cloudflare R2 (Cloudinary is the fallback). Video playback remains on YouTube.</p>
+      <p className="mt-8 border-t border-white/8 pt-4 text-[13px] text-white/40">Your own poster images are stored safely by the platform (up to 5 MB each). The video itself keeps playing from YouTube.</p>
       </>
       )}
     </div>
