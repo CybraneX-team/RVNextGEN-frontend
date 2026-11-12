@@ -67,8 +67,17 @@ type FullscreenDocument = Document & { webkitFullscreenEnabled?: boolean; webkit
 type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
 const fullscreenElement = () => (document as FullscreenDocument).fullscreenElement ?? (document as FullscreenDocument).webkitFullscreenElement ?? null;
 const fullscreenAvailable = () => typeof document !== "undefined" && Boolean(document.fullscreenEnabled || (document as FullscreenDocument).webkitFullscreenEnabled);
-const exitFullscreen = () => { void Promise.resolve(document.exitFullscreen?.() ?? (document as FullscreenDocument).webkitExitFullscreen?.()).catch(() => {}); };
-const enterFullscreen = (element: FullscreenElement) => Promise.resolve(element.requestFullscreen?.({ navigationUI: "hide" }) ?? element.webkitRequestFullscreen?.() ?? Promise.reject(new Error("Full screen unavailable")));
+const exitFullscreen = async () => {
+  try {
+    if (document.exitFullscreen) await document.exitFullscreen();
+    else await (document as FullscreenDocument).webkitExitFullscreen?.();
+  } catch { /* Full screen may already have ended in the browser. */ }
+};
+const enterFullscreen = async (element: FullscreenElement) => {
+  if (element.requestFullscreen) await element.requestFullscreen({ navigationUI: "hide" });
+  else if (element.webkitRequestFullscreen) await element.webkitRequestFullscreen();
+  else throw new Error("Full screen unavailable");
+};
 type LockableOrientation = ScreenOrientation & { lock?: (orientation: string) => Promise<void> };
 const orientation = () => (typeof screen === "undefined" ? undefined : screen.orientation as LockableOrientation | undefined);
 const BRIGHTNESS_KEY = "rv-player-brightness";
@@ -121,7 +130,8 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
 
   useEffect(() => {
     // Mount the embed as soon as the dialog is open.
-    if (!videoId || !playerMount.current) return;
+    const host = playerMount.current;
+    if (!videoId || !host) return;
     const openedAt = performance.now();
     const startDelay = firstStart.current ? AUTOPLAY_DELAY_MS : 0;
     firstStart.current = false;
@@ -129,15 +139,20 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     let live = true;
     let instance: YouTubePlayer | null = null;
     void loadYouTubeApi().then(() => {
-      if (!live || !playerMount.current || !window.YT) return;
-      instance = new window.YT.Player(playerMount.current, {
+      if (!live || !window.YT) return;
+      // YouTube replaces its target with an iframe and removes it on destroy. Keep
+      // that target inside a stable React-owned host so iOS control switches and
+      // Strict Mode cleanup never remove a DOM node React still expects to own.
+      const target = document.createElement("div");
+      host.replaceChildren(target);
+      instance = new window.YT.Player(target, {
         width: "100%",
         height: "100%",
         videoId,
         playerVars: { autoplay: 0, controls: nativeControls ? 1 : 0, disablekb: nativeControls ? 0 : 1, fs: nativeControls ? 1 : 0, start: Math.floor(resumeAt.current), playsinline: 1, rel: 0, cc_load_policy: 0, enablejsapi: 1, origin: window.location.origin },
         events: {
           onReady: (event: { target: YouTubePlayer }) => {
-            if (!live) { event.target.destroy(); return; }
+            if (!live) return;
             player.current = event.target;
             setPlayerReady(true);
             const length = event.target.getDuration();
@@ -159,9 +174,9 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     return () => {
       live = false;
       window.clearTimeout(autoplayTimer);
-      player.current?.destroy();
-      player.current = null;
-      instance = null;
+      instance?.destroy();
+      if (player.current === instance) player.current = null;
+      host.replaceChildren();
     };
   }, [videoId, nativeControls]);
 
@@ -235,8 +250,9 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     if (fullscreenElement()) { exitFullscreen(); return; }
     const modal = dialog.current;
     if (!modal) return;
-    // The dialog fills the screen; if the browser refuses it, fall back to the whole page.
-    try { await enterFullscreen(modal); } catch { try { await enterFullscreen(document.documentElement); } catch { return; } }
+    // A dialog cannot be a Fullscreen API target. The document contains the open
+    // modal and keeps the request in the original tap on Safari and other browsers.
+    try { await enterFullscreen(document.documentElement); } catch { return; }
     // On phones and tablets, turn the screen to landscape once full screen is on (Android; iOS has no lock).
     if (window.matchMedia("(pointer: coarse)").matches) {
       try { await orientation()?.lock?.("landscape"); } catch { /* The browser or device doesn't allow locking. */ }
@@ -357,7 +373,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-black/70" />
     <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#302116] [&>*]:origin-top-left">
       <div className="absolute inset-0 z-[1] bg-black/40" />
-      {videoId && <div className="absolute inset-0 z-[2]" style={{ filter: brightness === 100 ? undefined : `brightness(${brightness / 100})` }}><div key={nativeControls ? "native" : "custom"} ref={playerMount} className="absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0" /></div>}
+      {videoId && <div className="absolute inset-0 z-[2]" style={{ filter: brightness === 100 ? undefined : `brightness(${brightness / 100})` }}><div ref={playerMount} className={`absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0 ${nativeControls ? "pointer-events-auto" : ""}`} /></div>}
     </div>
     {streamUrl && streamStarted && <iframe src={streamUrl} title={seriesTitle} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="absolute inset-0 z-10 size-full border-0" />}
     <div className={`absolute inset-0 z-20 ${streamUrl || nativeControls ? "pointer-events-none" : ""}`} onClick={event => {
@@ -380,7 +396,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
           <LiquidGlassButton type="button" onClick={() => openPanel("captions")} disabled={!playerReady} aria-label="Subtitles and language" aria-haspopup="menu" aria-expanded={panel === "captions"} title="Subtitles (C)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><CaptionsIcon /></LiquidGlassButton>
           <LiquidGlassButton type="button" onClick={() => openPanel("root")} disabled={!playerReady} aria-label="Player settings" aria-haspopup="menu" aria-expanded={panel !== null} title="Settings" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><SettingsIcon /></LiquidGlassButton>
           </>}
-          {fullscreenSupported ? <LiquidGlassButton type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton> : videoId && !streamUrl && <LiquidGlassButton type="button" onClick={toggleNativeControls} aria-label={nativeControls ? "Back to standard controls" : "Full screen"} title={nativeControls ? "Back to standard controls" : "Full screen (opens YouTube’s own controls on this device)"} className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{nativeControls ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>}
+          {fullscreenSupported ? <LiquidGlassButton type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton> : videoId && !streamUrl && <LiquidGlassButton type="button" onClick={toggleNativeControls} disabled={!playerReady} aria-label={nativeControls ? "Back to standard controls" : "Full screen"} title={nativeControls ? "Back to standard controls" : "Full screen (opens YouTube’s own controls on this device)"} className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{nativeControls ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>}
         </div>}
       </div>
       {playerError && <p role="alert" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">{playerError}</p>}
