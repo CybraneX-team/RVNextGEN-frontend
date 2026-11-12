@@ -31,7 +31,8 @@ export const ChevronRightIcon = icon(<path d="m9 6 6 6-6 6" />);
 export const SunIcon = icon(<><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></>);
 
 /** A scrubbing timeline: buffered + played fill, a growing thumb, a time bubble on hover/drag, and slider keyboard support. */
-export function Scrubber({ position, duration, buffered, disabled, onCommit, onScrubChange }: {
+export function Scrubber({ position, duration, buffered, disabled, onCommit, onScrubChange, rotated = false }: {
+  rotated?: boolean;
   position: number;
   duration: number;
   buffered: number;
@@ -48,27 +49,30 @@ export function Scrubber({ position, duration, buffered, disabled, onCommit, onS
   const fraction = duration > 0 ? clamp(shown / duration, 0, 1) : 0;
   const bubbleFraction = dragging ? fraction : hover ?? fraction;
 
-  const fractionAt = (clientX: number) => {
+  const fractionAt = (clientX: number, clientY: number) => {
     const box = track.current?.getBoundingClientRect();
-    return box && box.width > 0 ? clamp((clientX - box.left) / box.width, 0, 1) : 0;
+    if (!box) return 0;
+    const length = rotated ? box.height : box.width;
+    const offset = rotated ? clientY - box.top : clientX - box.left;
+    return length > 0 ? clamp(offset / length, 0, 1) : 0;
   };
   const setScrubbing = (value: boolean) => { setDragging(value); onScrubChange?.(value); };
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (disabled || !duration) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDragValue(fractionAt(event.clientX) * duration);
+    setDragValue(fractionAt(event.clientX, event.clientY) * duration);
     setScrubbing(true);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (disabled || !duration) return;
-    const next = fractionAt(event.clientX);
+    const next = fractionAt(event.clientX, event.clientY);
     if (dragging) setDragValue(next * duration);
     if (dragging || event.pointerType === "mouse") setHover(next);
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     if (!dragging) return;
-    onCommit(fractionAt(event.clientX) * duration);
+    onCommit(fractionAt(event.clientX, event.clientY) * duration);
     setScrubbing(false);
     if (event.pointerType !== "mouse") setHover(null);
   };
@@ -137,8 +141,8 @@ export function SettingsPanel({ open, page, onPage, onClose, qualities, quality,
   </div>;
 
   return <div
-    ref={root} inert={!open} onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}
-    className="absolute z-30 inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] origin-bottom motion-reduce:transition-none sm:inset-x-auto sm:right-[max(16px,env(safe-area-inset-right))] sm:bottom-auto sm:top-[calc(max(16px,env(safe-area-inset-top))+60px)] sm:w-[340px] sm:origin-top-right"
+    ref={root} data-player-settings="" inert={!open} onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}
+    className="absolute z-30 inset-x-3 bottom-[max(12px,var(--player-safe-bottom,env(safe-area-inset-bottom)))] origin-bottom motion-reduce:transition-none sm:inset-x-auto sm:right-[max(16px,var(--player-safe-right,env(safe-area-inset-right)))] sm:bottom-auto sm:top-[calc(max(16px,var(--player-safe-top,env(safe-area-inset-top)))+60px)] sm:w-[340px] sm:origin-top-right"
     style={{ opacity: open ? 1 : 0, transform: open ? "none" : "scale(.94) translateY(8px)", transition: `opacity 220ms ease-out, transform 360ms ${EASE}`, pointerEvents: open ? "auto" : "none" }}
   >
     <LiquidGlassSurface regular className="w-full rounded-[28px]">

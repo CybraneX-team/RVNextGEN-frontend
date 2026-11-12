@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { LiquidGlassButton, LiquidGlassSurface } from "./LiquidGlassSurface";
+import styles from "./EpisodeExpansion.module.css";
 import { BackIcon, CaptionsIcon, FullscreenEnterIcon, FullscreenExitIcon, Scrubber, SettingsIcon, SunIcon, SettingsPanel, formatTime, type CaptionTrack, type SettingsPage } from "./PlayerControls";
 
 export type EpisodeSelection = { episode: number; origin: HTMLElement };
@@ -80,6 +81,13 @@ const enterFullscreen = async (element: FullscreenElement) => {
 };
 type LockableOrientation = ScreenOrientation & { lock?: (orientation: string) => Promise<void> };
 const orientation = () => (typeof screen === "undefined" ? undefined : screen.orientation as LockableOrientation | undefined);
+const portraitQuery = "(orientation: portrait)";
+const subscribeToOrientation = (onChange: () => void) => {
+  const query = window.matchMedia(portraitQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const isPortrait = () => window.matchMedia(portraitQuery).matches;
 const BRIGHTNESS_KEY = "rv-player-brightness";
 // Netflix-style: let the episode art settle for a moment, then start playing on its own.
 const AUTOPLAY_DELAY_MS = 1000;
@@ -103,6 +111,11 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
   const [activity, setActivity] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenSupported] = useState(fullscreenAvailable);
+  const [landscapeMode, setLandscapeMode] = useState(false);
+  const portrait = useSyncExternalStore(subscribeToOrientation, isPortrait, () => false);
+  const rotatedLandscape = landscapeMode && portrait;
+  const fullscreenActive = fullscreen || landscapeMode;
+  const fullscreenRequest = useRef(0);
   const [brightness, setBrightness] = useState(() => {
     try { const saved = Number(localStorage.getItem(BRIGHTNESS_KEY)); return saved >= 50 && saved <= 150 ? saved : 100; } catch { return 100; }
   });
@@ -111,10 +124,6 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
   const [tracks, setTracks] = useState<CaptionTrack[]>([]);
   const [captionLang, setCaptionLang] = useState<string | null>(null);
   const [streamStarted, setStreamStarted] = useState(false);
-  // Browsers without a Fullscreen API for pages (iPhone Safari): full screen is YouTube's own player controls.
-  const [nativeControls, setNativeControls] = useState(false);
-  const resumeAt = useRef(0);
-  const firstStart = useRef(true);
   const [adjustingBrightness, setAdjustingBrightness] = useState(false);
   const [brightnessHud, setBrightnessHud] = useState(false);
   const brightnessGesture = useRef<{ y: number; start: number; height: number; moved: boolean } | null>(null);
@@ -133,8 +142,6 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     const host = playerMount.current;
     if (!videoId || !host) return;
     const openedAt = performance.now();
-    const startDelay = firstStart.current ? AUTOPLAY_DELAY_MS : 0;
-    firstStart.current = false;
     let autoplayTimer: number | undefined;
     let live = true;
     let instance: YouTubePlayer | null = null;
@@ -149,7 +156,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
         width: "100%",
         height: "100%",
         videoId,
-        playerVars: { autoplay: 0, controls: nativeControls ? 1 : 0, disablekb: nativeControls ? 0 : 1, fs: nativeControls ? 1 : 0, start: Math.floor(resumeAt.current), playsinline: 1, rel: 0, cc_load_policy: 0, enablejsapi: 1, origin: window.location.origin },
+        playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0, cc_load_policy: 0, enablejsapi: 1, origin: window.location.origin },
         events: {
           onReady: (event: { target: YouTubePlayer }) => {
             if (!live) return;
@@ -159,7 +166,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
             if (Number.isFinite(length)) setDuration(length);
             event.target.loadModule?.("captions");
             // Start one second after the card opened, counting the time the player spent loading.
-            autoplayTimer = window.setTimeout(() => { if (live) event.target.playVideo(); }, Math.max(0, startDelay - (performance.now() - openedAt)));
+            autoplayTimer = window.setTimeout(() => { if (live) event.target.playVideo(); }, Math.max(0, AUTOPLAY_DELAY_MS - (performance.now() - openedAt)));
           },
           onStateChange: (event: { data: number; target: YouTubePlayer }) => {
             if (!live || !window.YT) return;
@@ -178,7 +185,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
       if (player.current === instance) player.current = null;
       host.replaceChildren();
     };
-  }, [videoId, nativeControls]);
+  }, [videoId]);
 
   useEffect(() => {
     if (!playing) return;
@@ -233,29 +240,48 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     const onChange = () => {
       const active = Boolean(fullscreenElement());
       setFullscreen(active);
-      if (!active) { try { orientation()?.unlock(); } catch { /* Not locked. */ } }
+      if (!active) {
+        fullscreenRequest.current += 1;
+        setLandscapeMode(false);
+        try { orientation()?.unlock(); } catch { /* Not locked. */ }
+      }
     };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
     return () => { document.removeEventListener("fullscreenchange", onChange); document.removeEventListener("webkitfullscreenchange", onChange); };
   }, []);
-  const toggleNativeControls = () => {
-    resumeAt.current = player.current?.getCurrentTime() ?? position;
-    setPlayerReady(false);
-    setPlaying(false);
-    setPanel(null);
-    setNativeControls(value => !value);
+  const leaveFullscreen = () => {
+    fullscreenRequest.current += 1;
+    setLandscapeMode(false);
+    if (fullscreenElement()) void exitFullscreen();
+    try { orientation()?.unlock(); } catch { /* No orientation lock to release. */ }
+    wake();
   };
   const toggleFullscreen = async () => {
-    if (fullscreenElement()) { exitFullscreen(); return; }
-    const modal = dialog.current;
-    if (!modal) return;
-    // A dialog cannot be a Fullscreen API target. The document contains the open
-    // modal and keeps the request in the original tap on Safari and other browsers.
-    try { await enterFullscreen(document.documentElement); } catch { return; }
-    // On phones and tablets, turn the screen to landscape once full screen is on (Android; iOS has no lock).
-    if (window.matchMedia("(pointer: coarse)").matches) {
-      try { await orientation()?.lock?.("landscape"); } catch { /* The browser or device doesn't allow locking. */ }
+    if (fullscreenElement() || landscapeMode) { leaveFullscreen(); return; }
+    if (!dialog.current || closing.current) return;
+    const request = ++fullscreenRequest.current;
+    const touchScreen = window.matchMedia("(pointer: coarse)").matches;
+    setPanel(null);
+    wake();
+    if (!fullscreenSupported) { setLandscapeMode(true); return; }
+    // The document contains the modal; a dialog cannot be a Fullscreen API target.
+    try { await enterFullscreen(document.documentElement); }
+    catch {
+      if (touchScreen && request === fullscreenRequest.current && !closing.current) setLandscapeMode(true);
+      return;
+    }
+    if (request !== fullscreenRequest.current || closing.current) { void exitFullscreen(); return; }
+    if (touchScreen) {
+      try {
+        const deviceOrientation = orientation();
+        if (!deviceOrientation?.lock) throw new Error("Orientation lock unavailable");
+        await deviceOrientation.lock("landscape");
+      } catch {
+        // Safari may deny orientation lock. Rotate just the viewer and its controls
+        // in portrait, keeping the same iframe, playback position, and audio.
+        if (request === fullscreenRequest.current && !closing.current) setLandscapeMode(true);
+      }
     }
   };
 
@@ -290,6 +316,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     dismiss.current = () => {
       if (closing.current) return;
       closing.current = true;
+      fullscreenRequest.current += 1;
       player.current?.pauseVideo();
       if (fullscreenElement()) exitFullscreen();
       modal.close();
@@ -297,6 +324,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
       previousFocus?.focus({ preventScroll: true });
     };
     return () => {
+      fullscreenRequest.current += 1;
       clone.remove();
       if (fullscreenElement()) exitFullscreen();
       modal.close();
@@ -334,12 +362,12 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
   const brightnessDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    brightnessGesture.current = { y: event.clientY, start: brightness, height: event.currentTarget.clientHeight, moved: false };
+    brightnessGesture.current = { y: rotatedLandscape ? -event.clientX : event.clientY, start: brightness, height: event.currentTarget.clientHeight, moved: false };
   };
   const brightnessMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const gesture = brightnessGesture.current;
     if (!gesture) return;
-    const delta = gesture.y - event.clientY;
+    const delta = gesture.y - (rotatedLandscape ? -event.clientX : event.clientY);
     if (!gesture.moved && Math.abs(delta) < 8) return;
     if (!gesture.moved) { gesture.moved = true; setAdjustingBrightness(true); }
     setBrightnessHud(true);
@@ -354,7 +382,7 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     if (gesture && !gesture.moved && event.type === "pointerup") backgroundTap(event.pointerType);
   };
   const onKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
-    if (streamUrl || nativeControls || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (streamUrl || event.metaKey || event.ctrlKey || event.altKey) return;
     wake();
     if ((event.target as HTMLElement).closest("button, [role=slider], input, [role=menu]") && event.key !== "f" && event.key !== "m" && event.key !== "c") return;
     const key = event.key.toLowerCase();
@@ -362,46 +390,47 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
     else if (key === "arrowleft") { event.preventDefault(); skipBy(-10); }
     else if (key === "arrowright") { event.preventDefault(); skipBy(10); }
     else if (key === "m") toggleMute();
-    else if (key === "f" && fullscreenSupported) void toggleFullscreen();
+    else if (key === "f") void toggleFullscreen();
     else if (key === "c") openPanel("captions");
   };
 
-  const controlsOn = !streamUrl && !playerError && !nativeControls;
+  const controlsOn = !streamUrl && !playerError;
   const fade = `transition-opacity duration-300 motion-reduce:transition-none ${chromeVisible ? "opacity-100" : "opacity-0"}`;
 
-  return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onKeyDown={onKeyDown} onPointerMove={() => { if (!streamUrl && performance.now() - lastWake.current > 300) { lastWake.current = performance.now(); wake(); } }} onCancel={event => { event.preventDefault(); if (panel !== null) setPanel(null); else dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
+  return <dialog ref={dialog} aria-label={`${seriesTitle} — Episode ${String(selection.episode).padStart(2, "0")}`} onKeyDown={onKeyDown} onPointerMove={() => { if (!streamUrl && performance.now() - lastWake.current > 300) { lastWake.current = performance.now(); wake(); } }} onCancel={event => { event.preventDefault(); if (panel !== null) setPanel(null); else if (fullscreenActive) leaveFullscreen(); else dismiss.current(); }} className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-white backdrop:bg-transparent">
+    <div className={`${styles.viewport} ${rotatedLandscape ? styles.rotated : ""}`} data-player-landscape={landscapeMode || undefined} data-player-rotated={rotatedLandscape || undefined}>
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-black/70" />
     <div ref={artwork} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden bg-[#302116] [&>*]:origin-top-left">
       <div className="absolute inset-0 z-[1] bg-black/40" />
-      {videoId && <div className="absolute inset-0 z-[2]" style={{ filter: brightness === 100 ? undefined : `brightness(${brightness / 100})` }}><div ref={playerMount} className={`absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0 ${nativeControls ? "pointer-events-auto" : ""}`} /></div>}
+      {videoId && <div className="absolute inset-0 z-[2]" style={{ filter: brightness === 100 ? undefined : `brightness(${brightness / 100})` }}><div ref={playerMount} className="absolute inset-0 [&_iframe]:size-full [&_iframe]:border-0" /></div>}
     </div>
     {streamUrl && streamStarted && <iframe src={streamUrl} title={seriesTitle} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="absolute inset-0 z-10 size-full border-0" />}
-    <div className={`absolute inset-0 z-20 ${streamUrl || nativeControls ? "pointer-events-none" : ""}`} onClick={event => {
-      if (streamUrl || nativeControls || event.target !== event.currentTarget) return;
+    <div className={`absolute inset-0 z-20 ${streamUrl ? "pointer-events-none" : ""}`} onClick={event => {
+      if (streamUrl || event.target !== event.currentTarget) return;
       backgroundTap((event.nativeEvent as PointerEvent).pointerType);
     }}>
       {controlsOn && <div aria-hidden="true" onPointerDown={brightnessDown} onPointerMove={brightnessMove} onPointerUp={brightnessUp} onPointerCancel={brightnessUp} className="absolute inset-y-24 left-0 w-[32%] touch-none" />}
-      {controlsOn && <div aria-hidden="true" className="pointer-events-none absolute top-1/2 left-[max(16px,env(safe-area-inset-left))] z-10 h-[min(240px,46dvh)] w-12 -translate-y-1/2 transition-[opacity,transform] duration-300 motion-reduce:transition-none" style={{ opacity: brightnessHud ? 1 : 0, transform: `translateY(-50%) translateX(${brightnessHud ? 0 : -8}px)` }}>
-        <LiquidGlassSurface className="h-full w-full rounded-full"><div className="relative h-[min(240px,46dvh)] w-12 overflow-hidden rounded-full">
+      {controlsOn && <div aria-hidden="true" className="pointer-events-none absolute top-1/2 left-[max(16px,var(--player-safe-left))] z-10 h-[min(240px,46cqh)] w-12 -translate-y-1/2 transition-[opacity,transform] duration-300 motion-reduce:transition-none" style={{ opacity: brightnessHud ? 1 : 0, transform: `translateY(-50%) translateX(${brightnessHud ? 0 : -8}px)` }}>
+        <LiquidGlassSurface className="h-full w-full rounded-full"><div className="relative h-[min(240px,46cqh)] w-12 overflow-hidden rounded-full">
           <div className="absolute inset-x-0 bottom-0 bg-white/80" style={{ height: `${Math.max(0, Math.min(100, brightness - 50))}%`, transition: adjustingBrightness ? "none" : "height 200ms ease-out" }} />
           <SunIcon className="absolute bottom-3 left-1/2 size-5 -translate-x-1/2 text-white mix-blend-difference" />
         </div></LiquidGlassSurface>
       </div>}
-      <div inert={!chromeVisible && controlsOn} className={`pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 pt-[max(16px,env(safe-area-inset-top))] pr-[max(16px,env(safe-area-inset-right))] pl-[max(16px,env(safe-area-inset-left))] ${controlsOn ? "bg-gradient-to-b from-black/55 to-transparent pb-12" : ""} ${streamUrl || nativeControls ? "" : fade}`}>
+      <div inert={!chromeVisible && controlsOn} className={`${styles.header} pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 pt-[max(16px,var(--player-safe-top))] pr-[max(16px,var(--player-safe-right))] pl-[max(16px,var(--player-safe-left))] ${controlsOn ? "bg-gradient-to-b from-black/55 to-transparent pb-12" : ""} ${streamUrl ? "" : fade}`}>
         <LiquidGlassButton type="button" autoFocus onClick={() => dismiss.current()} aria-label="Close video and return to episodes" title="Back to episodes" className="grid size-12 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
           <BackIcon />
         </LiquidGlassButton>
-        {(controlsOn || nativeControls || (streamUrl && fullscreenSupported)) && <div className="flex items-center gap-2">
+        {(controlsOn || streamUrl) && <div className="flex items-center gap-2">
           {controlsOn && <>
           <LiquidGlassButton type="button" onClick={() => openPanel("captions")} disabled={!playerReady} aria-label="Subtitles and language" aria-haspopup="menu" aria-expanded={panel === "captions"} title="Subtitles (C)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><CaptionsIcon /></LiquidGlassButton>
           <LiquidGlassButton type="button" onClick={() => openPanel("root")} disabled={!playerReady} aria-label="Player settings" aria-haspopup="menu" aria-expanded={panel !== null} title="Settings" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"><SettingsIcon /></LiquidGlassButton>
           </>}
-          {fullscreenSupported ? <LiquidGlassButton type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton> : videoId && !streamUrl && <LiquidGlassButton type="button" onClick={toggleNativeControls} disabled={!playerReady} aria-label={nativeControls ? "Back to standard controls" : "Full screen"} title={nativeControls ? "Back to standard controls" : "Full screen (opens YouTube’s own controls on this device)"} className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{nativeControls ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>}
+          <LiquidGlassButton type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreenActive ? "Exit full screen" : "Enter full screen"} title="Full screen (F)" className="grid size-11 place-items-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40">{fullscreenActive ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}</LiquidGlassButton>
         </div>}
       </div>
       {playerError && <p role="alert" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">{playerError}</p>}
       {videoId && !playerReady && !playerError && <p role="status" className="absolute inset-x-6 top-[38%] text-center text-sm text-white">Loading video…</p>}
-      {controlsOn && <div inert={!chromeVisible} className={`pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-[clamp(12px,5vw,52px)] px-4 ${fade}`}>
+      {controlsOn && <div inert={!chromeVisible} className={`${styles.transport} pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-[clamp(12px,5vw,52px)] px-4 ${fade}`}>
         <LiquidGlassButton type="button" onClick={() => skipBy(-10)} disabled={!playerReady} aria-label="Rewind 10 seconds" className="grid size-[58px] [@media(max-height:480px)]:size-12 place-items-center rounded-full text-white disabled:opacity-40 sm:size-[62px]">
           <svg aria-hidden="true" className="size-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none">10</text></svg>
         </LiquidGlassButton>
@@ -412,18 +441,19 @@ export default function EpisodeExpansion({ selection, seriesTitle, videoId, stre
           <svg aria-hidden="true" className="size-8 -scale-x-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M16.5 4.2A9 9 0 1 1 7.5 4.2" strokeLinecap="round" /><path d="m5.4 4.2 3.6-1.7-.1 3.6" fill="currentColor" stroke="none" /><text x="12" y="13" textAnchor="middle" dominantBaseline="central" fontSize="8" fontWeight="600" fill="currentColor" stroke="none" transform="translate(24 0) scale(-1 1)">10</text></svg>
         </LiquidGlassButton>
       </div>}
-      {controlsOn && <div inert={!chromeVisible} className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-3 bg-gradient-to-t from-black/75 to-transparent pt-16 pr-[max(24px,env(safe-area-inset-right))] pb-[max(20px,env(safe-area-inset-bottom))] pl-[max(24px,env(safe-area-inset-left))] sm:px-10 [@media(max-height:480px)]:gap-1 [@media(max-height:480px)]:pt-8 ${fade}`}>
-        <div className="flex items-end justify-between gap-4"><div className="min-w-0"><p className="truncate text-sm text-white/75 [@media(max-height:480px)]:hidden">{seriesTitle}</p><h2 className="text-xl font-bold [@media(max-height:480px)]:text-base">Episode {String(selection.episode).padStart(2, "0")}</h2></div>
+      {controlsOn && <div inert={!chromeVisible} className={`${styles.footer} pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-3 bg-gradient-to-t from-black/75 to-transparent pt-16 pr-[max(24px,var(--player-safe-right))] pb-[max(20px,var(--player-safe-bottom))] pl-[max(24px,var(--player-safe-left))] sm:px-10 [@media(max-height:480px)]:gap-1 [@media(max-height:480px)]:pt-8 ${fade}`}>
+        <div className="flex items-end justify-between gap-4"><div className="min-w-0"><p className={`${styles.subtitle} truncate text-sm text-white/75 [@media(max-height:480px)]:hidden`}>{seriesTitle}</p><h2 className="text-xl font-bold [@media(max-height:480px)]:text-base">Episode {String(selection.episode).padStart(2, "0")}</h2></div>
           <LiquidGlassButton type="button" disabled={!playerReady} onClick={() => { if (muted) { player.current?.unMute(); player.current?.setVolume(100); } else player.current?.mute(); setMuted(!muted); }} aria-label={muted ? "Unmute" : "Mute"} className="grid size-11 shrink-0 place-items-center rounded-full text-white disabled:opacity-40"><svg aria-hidden="true" className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 5 6 9H3v6h3l5 4V5Zm5 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /></svg></LiquidGlassButton>
         </div>
         <LiquidGlassSurface className="pointer-events-auto w-full rounded-full"><div className="flex h-12 w-full items-center gap-3 px-4">
           <span className="w-11 shrink-0 text-xs font-medium tabular-nums text-white/85">{formatTime(position)}</span>
-          <Scrubber position={position} duration={duration} buffered={buffered} disabled={!playerReady || !duration} onCommit={commitSeek} onScrubChange={setScrubbing} />
+          <Scrubber rotated={rotatedLandscape} position={position} duration={duration} buffered={buffered} disabled={!playerReady || !duration} onCommit={commitSeek} onScrubChange={setScrubbing} />
           <span className="w-12 shrink-0 text-right text-xs font-medium tabular-nums text-white/85">{duration ? `-${formatTime(Math.max(0, duration - position))}` : "--:--"}</span>
         </div></LiquidGlassSurface>
         {!videoId && <p role="status" className="text-center text-sm text-white/75">Video coming soon</p>}
       </div>}
       {controlsOn && <SettingsPanel open={panel !== null} page={panel ?? "root"} onPage={setPanel} onClose={() => setPanel(null)} qualities={qualities} quality={quality} onQuality={chooseQuality} tracks={tracks} captionLang={captionLang} onCaption={chooseCaption} brightness={brightness} onBrightness={setBrightness} />}
+    </div>
     </div>
   </dialog>;
 }
